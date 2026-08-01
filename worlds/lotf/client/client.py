@@ -20,9 +20,9 @@ from ..data import (
     REGION_PREFIXES,
     location_description,
 )
-from ..logic import reachable_regions
+from ..logic import location_requirements_met, reachable_regions
 from ..options import Goal
-from .bridge import GameBridge
+from .bridge import PROTOCOL_VERSION, GameBridge
 from .diagnostics import close_diagnostic_logger, create_diagnostic_logger
 from .recovery import RecoveryLedger, SaveIdentity, SaveTracker, compute_recovery_decisions
 
@@ -43,7 +43,7 @@ class LotFCommandProcessor(ClientCommandProcessor):
         self.ctx.resync_requested = True
         logger.info("Game bridge resync requested.")
 
-    def _cmd_logic(self) -> None:
+    def _cmd_logic(self, selection: str = "") -> None:
         """List unchecked Lords of the Fallen checks currently in logic."""
         rows = self.ctx.locations_in_logic()
         if rows is None:
@@ -52,14 +52,38 @@ class LotFCommandProcessor(ClientCommandProcessor):
         if not rows:
             logger.info("No unchecked Lords of the Fallen checks are currently in logic.")
             return
-        logger.info("Unchecked Lords of the Fallen checks currently in logic (%d):", len(rows))
-        for entry in rows:
+        selection = selection.strip()
+        area_prefixes = {prefix.upper() for prefix in REGION_PREFIXES.values()}
+        if selection.upper() in area_prefixes:
+            rows = [entry for entry in rows if REGION_PREFIXES.get(entry.region) == selection.upper()]
+            if not rows:
+                logger.info("No unchecked checks in area %s are currently in logic.", selection.upper())
+                return
+            page_rows = rows
+            heading = f"area {selection.upper()}"
+        else:
+            try:
+                page = max(1, int(selection or "1"))
+            except ValueError:
+                logger.info("Usage: /logic [page number or area prefix, such as AR]")
+                return
+            page_size = 30
+            start = (page - 1) * page_size
+            page_rows = rows[start : start + page_size]
+            if not page_rows:
+                logger.info("Logic page %d is empty; %d check(s) are currently in logic.", page, len(rows))
+                return
+            heading = f"page {page} ({start + 1}-{start + len(page_rows)} of {len(rows)})"
+        logger.info("Unchecked Lords of the Fallen checks currently in logic — %s:", heading)
+        for entry in page_rows:
             prefix = REGION_PREFIXES.get(entry.region, "??")
             logger.info("[%s] %s — %s", prefix, entry.name, location_description(entry))
+        if not selection and len(rows) > len(page_rows):
+            logger.info("Use /logic 2 for the next page or /logic <area prefix> to filter an area.")
 
-    def _cmd_inlogic(self) -> None:
+    def _cmd_inlogic(self, selection: str = "") -> None:
         """Alias for /logic."""
-        self._cmd_logic()
+        self._cmd_logic(selection)
 
     def _cmd_diagnostics(self) -> None:
         """Show and update the persistent diagnostic log used for support."""
@@ -124,11 +148,19 @@ class LordsOfTheFallenContext(CommonContext):
         self.game_load_epoch = 0
         self.last_scout_request = 0.0
         self.next_load_retry = 0.0
+        self.last_recovery_notice = ""
 
     async def server_auth(self, password_requested: bool = False) -> None:
         await super().server_auth(password_requested)
         await self.get_username()
         await self.send_connect(game=self.game)
+
+    def room_seed_name(self) -> str:
+        value = getattr(self, "seed_name", None)
+        if value not in (None, ""):
+            return str(value)
+        value = self.slot_data.get("seed_name") if self.slot_data else None
+        return str(value) if value not in (None, "") else "unknown-seed"
 
     def pickup_safety_profile(self) -> str:
         options = self.slot_data.get("options", {})
@@ -141,10 +173,21 @@ class LordsOfTheFallenContext(CommonContext):
             if enabled
         ]
         if not shuffled:
-            return "conservative (vanilla key and quest pickups remain enabled)"
-        return f"experimental pickup suppression ({' and '.join(shuffled)} randomized)"
+            return "world-pickup randomization active; vanilla key and quest objects remain enabled"
+        return (
+            "world-pickup randomization active with experimental "
+            f"{' and '.join(shuffled)} suppression"
+        )
 
     def on_package(self, cmd: str, args: dict[str, Any]) -> None:
+        if cmd == "RoomInfo":
+            # Archipelago 0.6.7 validates but does not assign RoomInfo's seed
+            # name in CommonClient. Retain it so logs/recovery can identify the
+            # exact generated output package across processes and sessions.
+            seed_name = args.get("seed_name")
+            if seed_name not in (None, ""):
+                self.seed_name = str(seed_name)
+            return
         if cmd == "RoomUpdate" and self.slot_data:
             asyncio.create_task(self._evaluate_goal())
             return
@@ -165,7 +208,7 @@ class LordsOfTheFallenContext(CommonContext):
             return
 
         self.slot_data = args["slot_data"]
-        seed = str(getattr(self, "seed_name", "unknown-seed"))
+        seed = self.room_seed_name()
         self.slot_name = str(self.auth or self.player_names.get(self.slot or -1) or self.slot or "unknown-slot")
         canonical_slot_data = json.dumps(self.slot_data, sort_keys=True, separators=(",", ":"))
         identity = "\0".join(
@@ -267,7 +310,12 @@ class LordsOfTheFallenContext(CommonContext):
             if LOCATION_NAME_TO_ID[entry.name] in enabled_ids
             and LOCATION_NAME_TO_ID[entry.name] in self.server_locations
             and LOCATION_NAME_TO_ID[entry.name] not in completed
-            and entry.region in reached
+            and (entry.logic_region or entry.region) in reached
+            and location_requirements_met(
+                entry.name,
+                received_names,
+                shuffle_quest_items=bool(int(options.get("shuffle_quest_items", 0))),
+            )
         ]
 
     def _build_placements(self) -> dict[int, dict[str, Any]]:
@@ -354,7 +402,7 @@ class LordsOfTheFallenContext(CommonContext):
         while not self.exit_event.is_set():
             try:
                 if self.resync_requested and self.slot_data and self.session:
-                    seed = str(getattr(self, "seed_name", "unknown-seed"))
+                    seed = self.room_seed_name()
                     self.sent_item_count = 0
                     self.load_synchronized = False
                     self.pending_load = None
@@ -442,11 +490,14 @@ class LordsOfTheFallenContext(CommonContext):
                 if reason.startswith("no primary")
                 else "Recovery paused: the active SaveNN.sav file is ambiguous. Use /save_slot <0-99>."
             )
-            logger.error(self.bridge_status)
+            if self.bridge_status != self.last_recovery_notice:
+                logger.warning(self.bridge_status)
+                self.last_recovery_notice = self.bridge_status
             if reason.startswith("no primary"):
                 self.pending_load = (boot_id, hint, durable_cursor, epoch)
                 self.next_load_retry = time.monotonic() + 5
             return
+        self.last_recovery_notice = ""
         conflict = self.recovery_ledger.conflict(identity)
         if conflict:
             self.bridge_status = (
@@ -664,7 +715,7 @@ class LordsOfTheFallenContext(CommonContext):
             reason,
             self.session or "none",
             self.room_fingerprint or "none",
-            getattr(self, "seed_name", None),
+            self.room_seed_name(),
             self.slot,
             self.slot_name,
             self.slot_data.get("world_version", "none"),
@@ -702,10 +753,18 @@ class LordsOfTheFallenContext(CommonContext):
             version = event.fields[1] if len(event.fields) > 1 else "unknown"
             protocol = int(event.fields[2]) if len(event.fields) > 2 else 0
             boot_id = event.fields[3] if len(event.fields) > 3 else "unknown"
-            if protocol != 3:
-                self.bridge_status = f"Bridge protocol mismatch: client 3, mod {protocol}. Reinstall the matching package."
+            if protocol != PROTOCOL_VERSION:
+                self.bridge_status = (
+                    f"Bridge protocol mismatch: client {PROTOCOL_VERSION}, mod {protocol}. "
+                    "Reinstall the matching package."
+                )
                 logger.error(self.bridge_status)
-                self.diagnostic.error("protocol_mismatch client=3 mod=%s version=%s", protocol, version)
+                self.diagnostic.error(
+                    "protocol_mismatch client=%s mod=%s version=%s",
+                    PROTOCOL_VERSION,
+                    protocol,
+                    version,
+                )
                 self.bridge_ready = False
                 return
             expected_version = str(self.slot_data.get("world_version", "unknown"))
@@ -856,7 +915,7 @@ class LordsOfTheFallenContext(CommonContext):
             self.bridge_status = f"Save synchronized at received-item cursor {cursor}; normal delivery enabled."
             logger.info(self.bridge_status)
             self.diagnostic.info("recovery_committed cursor=%s restored_item_types=%s", cursor, restored)
-        else:
+        elif command != "PING":
             self.diagnostic.debug("bridge_ack command=%s id=%s fields=%r", command, command_id, fields[3:])
 
     async def _evaluate_goal(self) -> None:

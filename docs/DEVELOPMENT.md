@@ -33,10 +33,38 @@ the shipped equipment-item asset paths without unpacking game content. The
 repository stores paths and names only; never commit extracted `.uasset`,
 `.ucas`, `.utoc`, SDK, PDB, or localization files.
 
+The checked-in `preplaced_pickups.py` is generated from the retail
+`DA_PrePlacedRandomLootMap` with
+`scripts/common/Extract-PreplacedPickups.py`. Convert only that asset to a
+UE5.1 legacy `.uasset`/`.uexp` pair with retoc, run the extractor, and inspect
+the diff. The extractor validates the 597-row count and permanently excludes
+`816_Quest_QST_Quest`, the tutorial Throwing Stone. Never commit the converted
+retail assets.
+
+Every generated GUID must then be resolved to its cooked gameplay sublevel.
+For a repeatable fast audit, convert maps once into a disposable directory and
+run the shared scanner:
+
+```powershell
+retoc to-legacy --no-shaders --version UE5_1 --filter '.umap' `
+  '<game>\LOTF2\Content\Paks' '<temporary-map-directory>'
+python scripts/common/Audit-PickupSublevels.py `
+  --legacy-maps '<temporary-map-directory>' `
+  --output worlds/lotf/pickup_sublevels.py
+```
+
+On Linux, use the same `retoc` arguments and `python3` with backslash line
+continuations. The scanner can instead read IoStore directly with `--retoc`
+and `--paks`, but a single legacy conversion is much faster during review. It
+must report all 597 GUIDs resolved. Review every changed sublevel and its
+`logic_region`, update the audit hash only after that review, and never commit
+the converted retail maps.
+
 Use a disposable offline save and a UE4SS developer build when validating new
 hooks. A mapping is accepted only after a clean process restart demonstrates:
 
-- one vanilla interaction produces one `CHECK`;
+- each eligible pre-placed interaction suppresses its vanilla item and produces
+  exactly one `CHECK`, while the tutorial Throwing Stone remains unchanged;
 - reconnect/resync does not repeat an acknowledged check or grant;
 - a crash/older-save load restores the measured post-checkpoint deficit for
   both a unique item and a stackable item, without duplicating either; and
@@ -46,6 +74,7 @@ hooks. A mapping is accepted only after a clean process restart demonstrates:
 
 Update `VERSION`, `archipelago.json`, Lua `Bridge.version`, client slot-data
 version, and `CHANGELOG.md` together. Run repository validation, both platform
-packagers, the full generation matrix, and an offline smoke test. Verify
-`SHA256SUMS.txt`, then test both a clean install and an upgrade from freshly
-extracted Windows and Linux packages. Tag releases exactly as `v<VERSION>`.
+packagers, the full generation matrix, and an offline smoke test. Test both a
+clean install and an upgrade from freshly extracted Windows and Linux packages.
+GitHub displays a digest for each uploaded release asset. Tag releases exactly
+as `v<VERSION>`.

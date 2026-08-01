@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 from BaseClasses import ItemClassification
 from worlds.generic.Rules import set_rule
 
-from .data import ALL_BOSSES_GOAL_LOCATIONS, GAME, REGION_CONNECTIONS
+from .data import (
+    ALL_BOSSES_GOAL_LOCATIONS,
+    GAME,
+    QUEST_LOCATION_REQUIREMENTS,
+    REGION_CONNECTIONS,
+)
 from .items import LordsOfTheFallenItem
 from .logic import requirement_is_active
 from .options import Goal
@@ -27,8 +32,20 @@ def set_rules(world: "LordsOfTheFallenWorld") -> None:
                 lambda state, item=requirement: state.has(item, world.player),
             )
 
+    if world.options.shuffle_quest_items:
+        enabled_names = {
+            location.name for location in world.multiworld.get_locations(world.player)
+        }
+        for location_name, requirements in QUEST_LOCATION_REQUIREMENTS.items():
+            if location_name not in enabled_names:
+                continue
+            set_rule(
+                world.get_location(location_name),
+                lambda state, items=requirements: state.has_all(items, world.player),
+            )
+
     goal_region_name = (
-        "Bramis Castle" if world.options.goal == Goal.option_any_ending else "Menu"
+        "Bramis Castle - Royal Wing" if world.options.goal == Goal.option_any_ending else "Menu"
     )
     goal_region = world.get_region(goal_region_name)
     victory_location = LordsOfTheFallenLocation(

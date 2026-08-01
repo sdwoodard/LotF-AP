@@ -10,16 +10,21 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.1.1" src="https://img.shields.io/badge/version-0.1.1-b76e45">
+  <img alt="Version 0.2.0" src="https://img.shields.io/badge/version-0.2.0-b76e45">
   <img alt="Archipelago 0.6.7 or newer" src="https://img.shields.io/badge/Archipelago-0.6.7%2B-6d5dfc">
   <img alt="Windows and Linux through Proton" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%2FProton-4a90a4">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3c9b5f">
 </p>
 
 > [!WARNING]
-> Version 0.1.1 is a development release for Steam build 24429019. Back up
+> Version 0.2.0 is a development release for Steam build 24429019. Back up
 > your saves, use a new character for every seed, disable Easy Anti-Cheat, and
 > keep the game offline. Never use the mod in matchmaking, co-op, or invasions.
+
+> [!IMPORTANT]
+> Generate a new multiworld after installing 0.2.0. Rooms generated with a
+> 0.1.x APWorld contain the old 58-location table and cannot gain the new
+> physical checks retroactively.
 
 The project couples a normal `.apworld` to a UE4SS Lua bridge. Archipelago
 runs outside the game; the bridge observes randomized checks, presents remote
@@ -47,14 +52,18 @@ hard-coded memory addresses.
 | --- | --- |
 | `lotf.apworld` | Generates Lords of the Fallen slots and adds the game client to Archipelago Launcher. |
 | UE4SS game mod | Detects checks, grants received items, displays remote items, and persists bridge state. |
-| Player options | Provides a thoroughly commented starting YAML with safe defaults. |
+| Player options | Provides a thoroughly commented starting YAML with the intended 0.2.0 defaults. |
 | Install packages | Includes separate Windows/PowerShell and Linux/Bash installers, launchers, uninstallers, and diagnostic tools. |
 | Developer tools | Validates source/assets, audits the installed game, tests generation matrices, and builds reproducible release archives. |
 
 Important features include:
 
+- 597 retail pre-placed world pickups, with only the tutorial Throwing Stone
+  deliberately kept vanilla;
 - `any_ending` and a route-safe `all_bosses` goal;
 - protected missable checks and excluded grind-heavy faction/Crucible sources;
+- optional Vigor Skull and weapon-upgrade smoothing with `off`, `semi`, and
+  `full` strengths;
 - `/logic` for region-prefixed, currently reachable unchecked locations;
 - durable check replay and inventory-measured rollback recovery;
 - rotating, room-linked logs and privacy-conscious support bundles;
@@ -68,13 +77,20 @@ Important features include:
 - The Steam release of *Lords of the Fallen* on Windows 10/11, or on Linux
   through Steam Proton.
 - [Archipelago 0.6.7 or newer](https://github.com/ArchipelagoMW/Archipelago/releases).
-- A compatible [RE-UE4SS 3.x build](https://github.com/UE4SS-RE/RE-UE4SS/releases).
+- [RE-UE4SS 3.0.1](https://github.com/UE4SS-RE/RE-UE4SS/releases/tag/v3.0.1),
+  using its basic `UE4SS_v3.0.1.zip` package.
 - Easy Anti-Cheat disabled and the game kept offline for the entire modded
   session.
 
-UE4SS is not redistributed. The installers modify only the
-`LotFArchipelago` mod directory and its `mods.txt` entry. The standalone mod
-archive contains one `LotFArchipelago` folder for manual installation.
+RE-UE4SS is the Unreal Engine mod loader that runs the included Lua bridge
+inside the game. It is a separate open-source project and is not included in
+this release. Download the basic package from the
+[official RE-UE4SS 3.0.1 release](https://github.com/UE4SS-RE/RE-UE4SS/releases/download/v3.0.1/UE4SS_v3.0.1.zip),
+not a source-code, `zDEV`, or experimental archive.
+
+The installers modify only the `LotFArchipelago` mod directory and its
+`mods.txt` entry. The complete platform packages also retain the mod payload
+under `game-mod/LotFArchipelago` for inspection or manual installation.
 
 ## Download and install
 
@@ -84,35 +100,64 @@ appropriate platform scripts.
 
 ### Windows
 
-1. Back up `%LOCALAPPDATA%\LOTF2\Saved\SaveGames` and plan to use a new
-   character for this seed.
-2. Install RE-UE4SS into `LOTF2\Binaries\Win64`. Start the game offline once
-   and confirm that UE4SS creates a log, then close the game.
-3. Extract `LotF-Archipelago-x.y.z-win64.zip`. In PowerShell, from the
-   extracted directory, run:
+1. Back up `%LOCALAPPDATA%\LOTF2\Saved\SaveGames` and use a new character for
+   each seed.
+2. In Steam, right-click **Lords of the Fallen** and choose
+   **Manage > Browse local files**. The folder Steam opens is the game folder;
+   it contains `LOTF2.exe` and a `LOTF2` subfolder. The exact drive and Steam
+   library are different for each user.
+3. Download the basic `UE4SS_v3.0.1.zip` from the official link above. Open
+   the game folder, then open `LOTF2\Binaries\Win64`. Extract the *contents* of
+   the UE4SS ZIP directly into `Win64` so the layout includes entries such as:
 
-   ```powershell
-   .\Install-LotFArchipelago.ps1 `
-     -GamePath "D:\Program Files\Steam\steamapps\common\Lords of the Fallen"
+   ```text
+   Lords of the Fallen/
+   `-- LOTF2/Binaries/Win64/
+       |-- dwmapi.dll
+       |-- UE4SS.dll
+       `-- Mods/
    ```
 
-4. In Archipelago Launcher, select **Install APWorld** and choose
-   `lotf.apworld`. Double-clicking the file is also supported on Windows.
-5. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players`
+   Do not leave everything inside an extra `UE4SS_v3.0.1` folder. UE4SS will
+   create `UE4SS.log` in `Win64` when it loads.
+4. Download both `LotF-Archipelago-x.y.z-win64.zip` and
+   `LotF-Archipelago-Windows-Installer-x.y.z.zip`. Use **Extract All** on the
+   small Windows Installer ZIP, open that folder, and double-click
+   **`Install-LotFArchipelago.cmd`**. Do not extract the `-win64.zip` yourself;
+   select that ZIP when the file picker asks for it, then select the game folder
+   from step 2. The installer uses a temporary extraction, installs the mod,
+   copies the APWorld, YAML, documentation, and player tools beside itself, and
+   removes the temporary files afterward.
+
+   The `.cmd` wrapper uses a process-local execution-policy bypass, so Windows'
+   normal “script execution is disabled” setting does not block it. As a manual
+   alternative, extract the full `-win64.zip` and run its copy of the same
+   installer.
+5. In Archipelago Launcher, select **Install APWorld** and choose the
+   `lotf.apworld` now beside the guided installer. Double-clicking the file is
+   also supported on Windows.
+6. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players`
    directory, and generate locally. A locally generated multiworld can be
    uploaded to the normal Archipelago host afterward.
-6. Open **Lords of the Fallen Client**, connect to your room and slot, then
-   launch the game offline with:
+7. Put Steam in **Offline Mode**, but leave Steam running and signed into the
+   account that owns the full game. Open **Lords of the Fallen Client** and
+   connect to the room and slot. Then double-click **`Start-LotF-AP.cmd`**,
+   select the game folder when asked, and accept the offline-use warning.
+8. Do not load the character until the client reports `Game bridge connected`
+   and save synchronization completes.
 
-   ```powershell
-   .\Start-LotF-AP.ps1 `
-     -GamePath "D:\Program Files\Steam\steamapps\common\Lords of the Fallen"
-   ```
+Always use `Start-LotF-AP.cmd` for a modded session. It disables the anti-cheat
+launch path and supplies the full game's Steam AppID (`1501750`) to the child
+process. This prevents the shipping executable from being mistaken for the
+limited Free Friend's Pass (`3664720`). If the game still displays Friend's
+Pass, close it, confirm the signed-in Steam account owns the full game, verify
+the game files in Steam, start the unmodded full game once while online, then
+return Steam to Offline Mode and retry the guided launcher. Do not create a
+`steam_appid.txt` file; the launcher refuses that unsupported workaround.
 
-7. Do not load the character until the client reports `Game bridge connected`.
-
-To remove the mod later, run `Uninstall-LotFArchipelago.ps1`. It removes only
-this project's mod and its `mods.txt` entry; it does not delete game saves.
+To remove the mod, double-click `Uninstall-LotFArchipelago.cmd` and select the
+game folder. It removes only this project's mod and `mods.txt` entry; it leaves
+UE4SS, saves, logs, backups, and other mods unchanged.
 
 ### Linux and Proton
 
@@ -175,7 +220,7 @@ automatic recovery rather than risking cross-seed item delivery.
 | Command | Result |
 | --- | --- |
 | `/bridge` | Shows mod/package versions, connection state, and the active pickup-safety profile. |
-| `/logic` or `/inlogic` | Lists unchecked locations currently reachable with received items, including a region prefix and short location description. |
+| `/logic [page or area]` or `/inlogic` | Lists unchecked locations currently reachable with received items, 30 per page. Use an area prefix such as `/logic AR` to filter; every row includes that prefix and a short location description. |
 | `/resync` | Starts a fresh measured inventory reconciliation after a crash, rollback, or paused grant. |
 | `/save_slot <0-99>` | Selects a save slot when automatic save detection is ambiguous. |
 | `/diagnostics` | Writes a room-linked diagnostic summary to the log. |
@@ -186,15 +231,32 @@ randomized item placed there.
 
 ## Logic and safety
 
-The default **Safe First Seed** preset leaves vanilla key and quest pickups
-enabled. Suppression of those pickups is an explicitly experimental profile,
-reported by `/bridge` and in diagnostics.
+All 597 eligible pre-placed world pickups are checks and have their vanilla
+inventory item suppressed. The beginning Throwing Stone remains vanilla so the
+player can always knock down hanging corpses. The default player template
+enables traversal-key and quest-object shuffling, permits keys to cross worlds,
+and leaves both early-key guarantees off. The optional **Safe First Seed** web
+preset retains vanilla key and quest objects for build validation. The active
+suppression profile is reported by `/bridge` and diagnostics.
 
-Progression and broadly useful items cannot be placed at protected missable
-quest checks. Faction rewards and Crucible/boss-rush encounters are excluded
-from the location pool. `all_bosses` contains only audited encounters that
-remain available regardless of ending route and quest choices; ending-specific
-or quest-lockable bosses do not count.
+Every physical pickup GUID has been resolved to its cooked gameplay sublevel
+and assigned to an explicit base or keyed logic region. The checked-in audit
+covers all 597 identities and is protected by a stable digest; generation and
+the client's `/logic` command use the same region graph. The default upgrade
+counts reproduce one normal +10 weapon set, all 20 Sanguinarix upgrade
+materials, and all three lamp upgrades. Optional smoothing can keep low-value
+Vigor Skulls and Small Deralium toward early logical checks, with the larger
+tiers later; `semi` retains more local variation and `full` applies the
+strongest low-to-high ordering.
+
+Every item classified as advancement unlocks at least one check. This includes
+the four quest objects that unlock the Umbral-Tinged Flayed Skin, Elegant
+Perfume, and Restored Sentinel Banner checks. Progression and broadly useful
+items cannot be placed at those or other protected missable quest checks.
+Faction rewards and Crucible/boss-rush encounters are excluded from the
+location pool. `all_bosses` contains only audited encounters that remain
+available regardless of ending route and quest choices; ending-specific or
+quest-lockable bosses do not count.
 
 See [Progression and location safety](docs/PROGRESSION.md) for the complete
 advancement list, unsafe-location rules, excluded sources, and boss set. These
@@ -217,8 +279,10 @@ and recovery counts:
 - Windows: `%LOCALAPPDATA%\LotFArchipelago\logs\lotf-client.log`
 - Linux: `${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago/logs/lotf-client.log`
 
-Create a support archive with `New-LotFDiagnosticBundle.ps1` on Windows or
-`new-lotf-diagnostic-bundle.sh` on Linux. Supplying the game path includes the
+Create a basic support archive by double-clicking
+`New-LotFDiagnosticBundle.cmd` on Windows, or run
+`New-LotFDiagnosticBundle.ps1` with attachment paths for an advanced report.
+On Linux use `new-lotf-diagnostic-bundle.sh`. Supplying the game path includes the
 executable identity and UE4SS log. Supplying the generated multiworld and
 player YAML ties the report to its seed. The bundle intentionally excludes
 game saves and server passwords; review it before sharing.
@@ -242,40 +306,38 @@ installer/
 The release version is read from `VERSION`. Both build paths produce:
 
 - `lotf.apworld`
-- `LotF-Archipelago-Mod-x.y.z.zip`
 - `LotF-Archipelago-x.y.z-win64.zip`
 - `LotF-Archipelago-x.y.z-linux.zip`
-- `SHA256SUMS.txt`
+- `LotF-Archipelago-Windows-Installer-x.y.z.zip`
 
 Windows:
 
 ```powershell
-.\scripts\windows\Test-Repository.ps1 `
-  -GamePath "D:\Program Files\Steam\steamapps\common\Lords of the Fallen"
-.\scripts\windows\Build-Release.ps1 `
-  -GamePath "D:\Program Files\Steam\steamapps\common\Lords of the Fallen"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\Test-Repository.ps1 `
+  -GamePath "<Steam game folder>"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\Build-Release.ps1 `
+  -GamePath "<Steam game folder>"
 ```
 
 Pass `-RetocPath <retoc.exe>` for exact cooked-path and reflected-object
 checks. Development also auto-detects a sibling `.tools\retoc\retoc.exe`; it
 is never packaged.
 
-Linux (requires `python3`, `zip`, and GNU `coreutils`):
+Linux (requires `python3` and `zip`):
 
 ```bash
 bash ./scripts/linux/test-repository.sh \
   --game-path "$HOME/.local/share/Steam/steamapps/common/Lords of the Fallen"
 bash ./scripts/linux/build-release.sh \
   --game-path "$HOME/.local/share/Steam/steamapps/common/Lords of the Fallen"
-(cd dist && sha256sum -c SHA256SUMS.txt)
 ```
 
 For the exhaustive single-game, same-game multiworld, and mixed-game matrix,
 build `lotf.apworld` and run either:
 
 ```powershell
-.\scripts\windows\Test-GenerationMatrix.ps1 `
-  -ArchipelagoPath "D:\src\Archipelago"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\Test-GenerationMatrix.ps1 `
+  -ArchipelagoPath "<Archipelago source checkout>"
 ```
 
 ```bash
@@ -289,9 +351,12 @@ after every game or UE4SS update.
 
 ## Scope, support, and license
 
-This version uses unique inventory assets as checks. It does not randomize
-enemy placement, entrances, ordinary duplicate consumables, generic equipment
-pickups, or online play.
+This version randomizes every eligible pre-placed physical pickup represented
+in the retail game's stable random-loot map, including duplicated consumable
+and equipment pickup actors, plus mapped boss/key/quest/stigma checks. The
+tutorial Throwing Stone remains vanilla. Enemy drops, destructible drops,
+shop purchases, faction rewards, Crucible rewards, enemy placement, entrances,
+and online play are outside the current scope.
 
 For support, contact `sigmar.heldenhammer` on Discord (user ID
 `307218166944104448`). Include a short problem description, approximate time,

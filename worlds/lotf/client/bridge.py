@@ -7,7 +7,7 @@ from urllib.parse import quote, unquote
 
 from .diagnostics import default_data_root
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 MAX_RECORD_BYTES = 64 * 1024
 ROTATE_EVENTS_AT = 16 * 1024 * 1024
 
@@ -86,6 +86,8 @@ class GameBridge:
                 row["marker"],
                 1 if row.get("suppress", False) else 0,
                 1 if row.get("source") == "shop" else 0,
+                row.get("guid", ""),
+                row.get("retail_row", ""),
             )
         for item_id, row in slot_data.get("items", {}).items():
             if row.get("asset"):

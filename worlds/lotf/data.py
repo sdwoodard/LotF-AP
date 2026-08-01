@@ -1,14 +1,20 @@
 """Static data shared by generation and the client.
 
 Asset paths were derived from the IoStore directory index shipped with Steam
-Steam build 24429019. Paths deliberately use Unreal object notation instead of file
+build 24429019. Paths deliberately use Unreal object notation instead of file
 system paths so the UE4SS bridge can resolve them at runtime.
 """
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
 from enum import IntFlag
+from pathlib import PurePosixPath
+
+from .preplaced_pickups import PREPLACED_PICKUPS
+from .pickup_sublevels import PICKUP_SUBLEVELS
 
 GAME = "Lords of the Fallen"
 BASE_ID = 2_023_100_000
@@ -40,6 +46,10 @@ class LocationData:
     missable: bool = False
     suppress_group: str | None = None
     source: str | None = None
+    guid: str | None = None
+    retail_row: str | None = None
+    description: str | None = None
+    logic_region: str | None = None
 
 
 def asset(path: str) -> str:
@@ -60,21 +70,21 @@ def item_asset(relative: str) -> str:
 # granting the wrong object after a game update.
 ITEMS: tuple[ItemData, ...] = (
     ItemData("Pilgrim's Perch Key", item_asset("Keys/ITM_KEY_Cliffside_TrainingKey_ItemData"), "key", True),
-    ItemData("Skyrest Bridge Key", item_asset("Keys/ITM_KEY_SkywalkBridge_FidelisKey_ItemData"), "key", useful=True),
+    ItemData("Skyrest Bridge Key", item_asset("Keys/ITM_KEY_SkywalkBridge_FidelisKey_ItemData"), "key", True),
     ItemData("Fief Key", item_asset("Keys/ITM_KEY_Grove_FrozenForestKey_ItemData"), "key", True),
-    ItemData("Sunless Skein Key", item_asset("Keys/ITM_KEY_Mines_FidelitasKey_ItemData"), "key", useful=True),
+    ItemData("Sunless Skein Key", item_asset("Keys/ITM_KEY_Mines_FidelitasKey_ItemData"), "key", True),
     ItemData("Drainage Control Key", item_asset("Keys/ITM_KEY_MinesLowerCity_TowerKey_ItemData"), "key", True),
     ItemData("Abbot Vernoff's Key", item_asset("Keys/ITM_KEY_Monastery_ManseAbbotKey_ItemData"), "key", True),
-    ItemData("Tancred's Key", item_asset("Keys/ITM_KEY_ChastenerRoom_TowerKey_ItemData"), "key", useful=True),
-    ItemData("Bramis Castle Key", item_asset("Keys/ITM_KEY_HighSee_HugeDoorKey_ItemData"), "key", useful=True),
+    ItemData("Tancred's Key", item_asset("Keys/ITM_KEY_ChastenerRoom_TowerKey_ItemData"), "key", True),
+    ItemData("Empyrean Church Key", item_asset("Keys/ITM_KEY_HighSee_HugeDoorKey_ItemData"), "key", True),
     ItemData("Gerlinde's Cell Key", item_asset("Keys/ITM_KEY_QuestGerlindeSparky_CellKey_ItemData"), "key", useful=True),
     ItemData("Pilgrim's Perch Elevator Key", item_asset("Keys/ITM_KEY_Cliffside_ElevatorKey_ItemData"), "key", useful=True),
-    ItemData("Monastery Kitchen Key", item_asset("Keys/ITM_KEY_Monastery_KitchenKey_ItemData"), "key", useful=True),
-    ItemData("Castle Royal Key", item_asset("Keys/ITM_KEY_Castle_KingKey_ItemData"), "key", useful=True),
+    ItemData("Monastery Kitchen Key", item_asset("Keys/ITM_KEY_Monastery_KitchenKey_ItemData"), "key", True),
+    ItemData("Royal Key", item_asset("Keys/ITM_KEY_Castle_KingKey_ItemData"), "key", True),
     ItemData("Rune of Adyr", item_asset("Quest/ITM_QST_RuneOfAdyr"), "quest", True),
     ItemData("Empowered Rune of Adyr", item_asset("Quest/ITM_QST_RuneOfAdyr_Empowered"), "quest", useful=True),
     ItemData("Withered Rune of Adyr", item_asset("Quest/ITM_QST_RuneOfAdyr_Umbralized"), "quest", useful=True),
-    ItemData("Flayed Skin", item_asset("Quest/ITM_QST_FlayedPieceOfSkin"), "quest", useful=True),
+    ItemData("Flayed Skin", item_asset("Quest/ITM_QST_FlayedPieceOfSkin"), "quest", True),
     ItemData("Umbral-Tinged Flayed Skin", item_asset("Quest/ITM_QST_UmbralTingedPieceOfSkin"), "quest", useful=True),
     ItemData("Umbral Wisp", item_asset("Quest/ITM_QST_UmbralWisp"), "quest", useful=True),
     ItemData("Ancient Umbral Tome", item_asset("Quest/ITM_QST_AncientUmbralTome"), "quest", useful=True),
@@ -84,11 +94,11 @@ ITEMS: tuple[ItemData, ...] = (
     ItemData("Adyr-Worshipper's Saw", item_asset("Quest/ITM_QST_AdyrCultistBrandingIron"), "quest", useful=True),
     ItemData("Partially Charred Letter", item_asset("Quest/ITM_QST_PartiallyCharredLetter"), "quest", useful=True),
     ItemData("Poisoned Chalice", item_asset("Quest/ITM_QST_PoisonedChalice"), "quest", useful=True),
-    ItemData("Spurned Progeny Eyeball", item_asset("Quest/ITM_QST_SpurnedProgenyEyeball"), "quest", useful=True),
+    ItemData("Spurned Progeny Eyeball", item_asset("Quest/ITM_QST_SpurnedProgenyEyeball"), "quest", True),
     ItemData("Dark Crusader's Call", item_asset("Quest/ITM_QST_DarkCrusaderCommunicationDevice"), "quest", useful=True),
     ItemData("Dark Crusader's Wooden Cross", item_asset("Quest/ITM_QST_DarkCrusaderCrossCarvedFromWood"), "quest", useful=True),
-    ItemData("Ancient Sentinel Banner", item_asset("Quest/ITM_QST_AncientSentinelBanner_1"), "quest", useful=True),
-    ItemData("Tattered Sentinel Banner", item_asset("Quest/ITM_QST_AncientSentinelBanner_2"), "quest", useful=True),
+    ItemData("Ancient Sentinel Banner", item_asset("Quest/ITM_QST_AncientSentinelBanner_1"), "quest", True),
+    ItemData("Tattered Sentinel Banner", item_asset("Quest/ITM_QST_AncientSentinelBanner_2"), "quest", True),
     ItemData("Restored Sentinel Banner", item_asset("Quest/ITM_QST_RestoredSentinelBanner"), "quest", useful=True),
     ItemData("Rune Tablet: Cracked", item_asset("Quest/ITM_UPG_RuneSmithingCrystal_01"), "quest", useful=True),
     ItemData("Rune Tablet: Chipped", item_asset("Quest/ITM_UPG_RuneSmithingCrystal_02"), "quest", useful=True),
@@ -96,7 +106,7 @@ ITEMS: tuple[ItemData, ...] = (
     ItemData("Saintly Quintessence", item_asset("UpgradeMaterials/ITM_UPG_HealthPotionUpgrade"), "upgrade", useful=True),
     ItemData("Antediluvian Chisel", item_asset("UpgradeMaterials/ITM_UPG_LanternUpgrade"), "upgrade", useful=True),
     ItemData("Small Deralium Fragment", item_asset("UpgradeMaterials/ITM_UPG_WeaponUpgrade_01"), "upgrade", useful=True, quantity=3),
-    ItemData("Regular Deralium Nugget", item_asset("UpgradeMaterials/ITM_UPG_WeaponUpgrade_02"), "upgrade", useful=True, quantity=2),
+    ItemData("Regular Deralium Nugget", item_asset("UpgradeMaterials/ITM_UPG_WeaponUpgrade_02"), "upgrade", useful=True),
     ItemData("Large Deralium Shard", item_asset("UpgradeMaterials/ITM_UPG_WeaponUpgrade_03"), "upgrade", useful=True),
     ItemData("Deralium Chunk", item_asset("UpgradeMaterials/ITM_UPG_WeaponUpgrade_04"), "upgrade", useful=True),
     ItemData("Rebirth Chrysalis", item_asset("UpgradeMaterials/ITM_UPG_CharacterResetCurrency"), "useful", useful=True),
@@ -113,6 +123,21 @@ ITEMS: tuple[ItemData, ...] = (
     ItemData("Remembrance of Elianne", item_asset("Remnants/ITM_UTI_Remnant_DarkPieta"), "remembrance", useful=True),
     ItemData("Remembrance of the Unbroken Promise", item_asset("Remnants/ITM_UTI_Remnant_Fidelitas"), "remembrance", useful=True),
     ItemData("Vigor Cache", item_asset("Usables/VigorStones/ITM_CON_VigorStone_03"), "filler", quantity=2),
+    # Common retail consumables provide useful variety across the much larger
+    # world-pickup pool. Existing 0.1.x IDs remain stable because these append.
+    ItemData("Ammunition Pouch", item_asset("Usables/AmmoPellets/ITM_CON_AmmoPack_Small"), "filler"),
+    ItemData("Ammunition Satchel", item_asset("Usables/AmmoPellets/ITM_CON_AmmoPack_Large"), "filler"),
+    ItemData("Briostone", item_asset("Usables/HealthPellets/ITM_CON_HealthPellet_01"), "filler"),
+    ItemData("Briostone Pair", item_asset("Usables/HealthPellets/ITM_CON_HealthPellet_02"), "filler"),
+    ItemData("Briostone Trio", item_asset("Usables/HealthPellets/ITM_CON_HealthPellet_03"), "filler"),
+    ItemData("Small Manastone Cluster", item_asset("Usables/ManaPellets/ITM_CON_ManaPellet_01"), "filler"),
+    ItemData("Manastone Cluster", item_asset("Usables/ManaPellets/ITM_CON_ManaPellet_02"), "filler"),
+    ItemData("Large Manastone Cluster", item_asset("Usables/ManaPellets/ITM_CON_ManaPellet_03"), "filler"),
+    ItemData("Enervated Vigor Skull", item_asset("Usables/VigorStones/ITM_CON_VigorStone_01"), "filler"),
+    ItemData("Faint Vigor Skull", item_asset("Usables/VigorStones/ITM_CON_VigorStone_02"), "filler"),
+    ItemData("Animated Vigor Skull", item_asset("Usables/VigorStones/ITM_CON_VigorStone_03"), "filler"),
+    ItemData("Seething Vigor Skull", item_asset("Usables/VigorStones/ITM_CON_VigorStone_04"), "filler"),
+    ItemData("Replete Vigor Skull", item_asset("Usables/VigorStones/ITM_CON_VigorStone_05"), "filler"),
 )
 
 
@@ -120,7 +145,7 @@ def marker(relative: str) -> str:
     return item_asset(relative).rsplit("/", 1)[-1]
 
 
-LOCATIONS: tuple[LocationData, ...] = (
+CURATED_LOCATIONS: tuple[LocationData, ...] = (
     # Unique progression and quest pickups.  The marker is the UItemData class
     # observed by the game bridge, not a memory offset or version-fragile GUID.
     LocationData("Redcopse - Flayed Skin", "Abandoned Redcopse", marker("Quest/ITM_QST_FlayedPieceOfSkin"), Scope.CORE, suppress_group="quest"),
@@ -130,31 +155,31 @@ LOCATIONS: tuple[LocationData, ...] = (
     LocationData("Skyrest - Skyrest Bridge Key", "Skyrest Bridge", marker("Keys/ITM_KEY_SkywalkBridge_FidelisKey_ItemData"), Scope.CORE, False, "key"),
     LocationData("Pilgrim's Perch - Gerlinde's Cell Key", "Pilgrim's Perch", marker("Keys/ITM_KEY_QuestGerlindeSparky_CellKey_ItemData"), Scope.CORE, False, "key"),
     LocationData("Pilgrim's Perch - Elevator Key", "Pilgrim's Perch", marker("Keys/ITM_KEY_Cliffside_ElevatorKey_ItemData"), Scope.CORE, False, "key"),
-    LocationData("Forsaken Fen - Dark Crusader's Call", "Forsaken Fen", marker("Quest/ITM_QST_DarkCrusaderCommunicationDevice"), Scope.QUEST, False, "quest"),
-    LocationData("Forsaken Fen - Dark Crusader's Wooden Cross", "Forsaken Fen", marker("Quest/ITM_QST_DarkCrusaderCrossCarvedFromWood"), Scope.QUEST, False, "quest"),
-    LocationData("Fitzroy's Gorge - Catrin's Pendant", "Fitzroy's Gorge", marker("Quest/ITM_QST_CatrinPendant"), Scope.QUEST, False, "quest"),
-    LocationData("Lower Calrath - Adyr-Worshipper's Saw", "Lower Calrath", marker("Quest/ITM_QST_AdyrCultistBrandingIron"), Scope.QUEST, False, "quest"),
-    LocationData("Lower Calrath - Sunless Skein Key", "Lower Calrath", marker("Keys/ITM_KEY_Mines_FidelitasKey_ItemData"), Scope.CORE, False, "key"),
-    LocationData("Sunless Skein - Drainage Control Key", "Sunless Skein", marker("Keys/ITM_KEY_MinesLowerCity_TowerKey_ItemData"), Scope.CORE, False, "key"),
-    LocationData("Sunless Skein - Rune Tablet: Cracked", "Sunless Skein", marker("Quest/ITM_UPG_RuneSmithingCrystal_01"), Scope.CORE, False, "quest"),
-    LocationData("Cistern - Rune Tablet: Chipped", "Cistern", marker("Quest/ITM_UPG_RuneSmithingCrystal_02"), Scope.CORE, False, "quest"),
+    LocationData("Revelation Depths - Dark Crusader's Call", "Revelation Depths", marker("Quest/ITM_QST_DarkCrusaderCommunicationDevice"), Scope.QUEST, False, "quest"),
+    LocationData("Lower Calrath - Dark Crusader's Wooden Cross", "Lower Calrath", marker("Quest/ITM_QST_DarkCrusaderCrossCarvedFromWood"), Scope.QUEST, False, "quest"),
+    LocationData("Revelation Depths - Catrin's Pendant", "Revelation Depths", marker("Quest/ITM_QST_CatrinPendant"), Scope.QUEST, True, "quest"),
+    LocationData("Cistern - Adyr-Worshipper's Saw", "Cistern", marker("Quest/ITM_QST_AdyrCultistBrandingIron"), Scope.QUEST, False, "quest"),
+    LocationData("Sunless Skein - Sunless Skein Key", "Sunless Skein", marker("Keys/ITM_KEY_Mines_FidelitasKey_ItemData"), Scope.CORE, False, "key"),
+    LocationData("Cistern - Drainage Control Key", "Cistern", marker("Keys/ITM_KEY_MinesLowerCity_TowerKey_ItemData"), Scope.CORE, False, "key"),
+    LocationData("Fitzroy's Gorge - Rune Tablet: Cracked", "Fitzroy's Gorge", marker("Quest/ITM_UPG_RuneSmithingCrystal_01"), Scope.CORE, False, "quest"),
+    LocationData("Lower Calrath - Rune Tablet: Chipped", "Lower Calrath", marker("Quest/ITM_UPG_RuneSmithingCrystal_02"), Scope.CORE, False, "quest"),
     LocationData("Tower of Penance - Rune Tablet", "Tower of Penance", marker("Quest/ITM_UPG_RuneSmithingCrystal_03"), Scope.CORE, False, "quest"),
-    LocationData("Fief - Partially Charred Letter", "Fief of the Chill Curse", marker("Quest/ITM_QST_PartiallyCharredLetter"), Scope.QUEST, False, "quest"),
-    LocationData("Fief - Dark Crusader's Flayed Skin", "Fief of the Chill Curse", marker("Quest/ITM_QST_UmbralTingedPieceOfSkin"), Scope.QUEST, False, "quest"),
-    LocationData("Manse - Abbot Vernoff's Key", "Manse of the Hallowed Brothers", marker("Keys/ITM_KEY_Monastery_ManseAbbotKey_ItemData"), Scope.CORE, False, "key"),
+    LocationData("Bramis Castle - Partially Charred Letter", "Bramis Castle", marker("Quest/ITM_QST_PartiallyCharredLetter"), Scope.QUEST, False, "quest"),
+    LocationData("Path of Devotion - Umbral-Tinged Flayed Skin", "Path of Devotion", marker("Quest/ITM_QST_UmbralTingedPieceOfSkin"), Scope.QUEST, True, "quest"),
+    LocationData("Manse - Abbot Vernoff's Key", "Manse of the Hallowed Brothers", marker("Keys/ITM_KEY_Monastery_ManseAbbotKey_ItemData"), Scope.CORE, False, "key", logic_region="Manse - Kitchen and Interior"),
     LocationData("Manse - Monastery Kitchen Key", "Manse of the Hallowed Brothers", marker("Keys/ITM_KEY_Monastery_KitchenKey_ItemData"), Scope.CORE, False, "key"),
-    LocationData("Manse - Poisoned Chalice", "Manse of the Hallowed Brothers", marker("Quest/ITM_QST_PoisonedChalice"), Scope.QUEST, True, "quest"),
+    LocationData("Empyrean - Thorned Chalice", "The Empyrean", marker("Quest/ITM_QST_PoisonedChalice"), Scope.QUEST, True, "quest", logic_region="The Empyrean - Church"),
     LocationData("Tower of Penance - Tancred's Key", "Tower of Penance", marker("Keys/ITM_KEY_ChastenerRoom_TowerKey_ItemData"), Scope.CORE, False, "key"),
     LocationData("Abbey - Tattered Sentinel Banner", "Abbey of the Hallowed Sisters", marker("Quest/ITM_QST_AncientSentinelBanner_2"), Scope.QUEST, False, "quest"),
     LocationData("Abbey - Restored Sentinel Banner", "Abbey of the Hallowed Sisters", marker("Quest/ITM_QST_RestoredSentinelBanner"), Scope.QUEST, True, "quest"),
-    LocationData("Empyrean - Monastery Royal Key", "The Empyrean", marker("Keys/ITM_KEY_Castle_KingKey_ItemData"), Scope.CORE, False, "key"),
-    LocationData("Upper Calrath - Bramis Castle Key", "Upper Calrath", marker("Keys/ITM_KEY_HighSee_HugeDoorKey_ItemData"), Scope.CORE, False, "key"),
+    LocationData("Bramis Castle - Royal Key", "Bramis Castle", marker("Keys/ITM_KEY_Castle_KingKey_ItemData"), Scope.CORE, False, "key"),
+    LocationData("Empyrean - Church Key", "The Empyrean", marker("Keys/ITM_KEY_HighSee_HugeDoorKey_ItemData"), Scope.CORE, False, "key"),
     LocationData("Upper Calrath - Elegant Perfume", "Upper Calrath", marker("Quest/ITM_QST_ElegantPerfume"), Scope.QUEST, True, "quest"),
     LocationData("Upper Calrath - Rune of Adyr", "Upper Calrath", marker("Quest/ITM_QST_RuneOfAdyr"), Scope.CORE, False, "quest"),
     LocationData("Bramis Castle - Empowered Rune of Adyr", "Bramis Castle", marker("Quest/ITM_QST_RuneOfAdyr_Empowered"), Scope.QUEST, True, "quest"),
     LocationData("Mother's Lull - Withered Rune of Adyr", "Mother's Lull", marker("Quest/ITM_QST_RuneOfAdyr_Umbralized"), Scope.QUEST, True, "quest"),
-    LocationData("Mother's Lull - Umbral Wisp", "Mother's Lull", marker("Quest/ITM_QST_UmbralWisp"), Scope.QUEST, True, "quest"),
-    LocationData("Mother's Lull - Ancient Umbral Tome", "Mother's Lull", marker("Quest/ITM_QST_AncientUmbralTome"), Scope.QUEST, True, "quest"),
+    LocationData("Tower of Penance - Umbral Wisp", "Tower of Penance", marker("Quest/ITM_QST_UmbralWisp"), Scope.QUEST, True, "quest"),
+    LocationData("Upper Calrath - Ancient Umbral Tome", "Upper Calrath", marker("Quest/ITM_QST_AncientUmbralTome"), Scope.QUEST, True, "quest"),
     LocationData("Spurned Progeny - Eyeball", "Lower Calrath", marker("Quest/ITM_QST_SpurnedProgenyEyeball"), Scope.QUEST, False, "quest"),
     # Boss remembrance stigmas are explicit checks after the player soulflays
     # them.  This avoids relying on boss HP offsets or actor instance GUIDs.
@@ -164,9 +189,9 @@ LOCATIONS: tuple[LocationData, ...] = (
     LocationData("Stigma - Spurned Progeny", "Lower Calrath", marker("Stigmas/Boss/ITM_STI_Boss_FireGiant"), Scope.BOSS),
     LocationData("Stigma - Hollow Crow", "Fief of the Chill Curse", marker("Stigmas/Boss/ITM_STI_Boss_Facepoach"), Scope.BOSS),
     LocationData("Stigma - Tancred and Reinhold", "Tower of Penance", marker("Stigmas/Boss/ITM_STI_Boss_Chastener"), Scope.BOSS),
-    LocationData("Stigma - Judge Cleric", "The Empyrean", marker("Stigmas/Boss/ITM_STI_Boss_Abbess"), Scope.BOSS),
+    LocationData("Stigma - Judge Cleric", "The Empyrean", marker("Stigmas/Boss/ITM_STI_Boss_Abbess"), Scope.BOSS, logic_region="The Empyrean - Church"),
     LocationData("Stigma - Lightreaper", "Upper Calrath", marker("Stigmas/Boss/ITM_STI_Boss_LampHunter"), Scope.BOSS),
-    LocationData("Stigma - Sundered Monarch", "Bramis Castle", marker("Stigmas/Boss/ITM_STI_Boss_FatherOfMisery"), Scope.BOSS),
+    LocationData("Stigma - Sundered Monarch", "Bramis Castle", marker("Stigmas/Boss/ITM_STI_Boss_FatherOfMisery"), Scope.BOSS, logic_region="Bramis Castle - Royal Wing"),
     LocationData("Stigma - Unbroken Promise", "Revelation Depths", marker("Stigmas/Boss/ITM_STI_Boss_Fidelitas"), Scope.BOSS),
     LocationData("Stigma - Elianne the Starved", "Mother's Lull", marker("Stigmas/Boss/ITM_STI_Boss_PietaDark"), Scope.BOSS, True),
     LocationData("Stigma - Adyr", "Rhogar Realm", marker("Stigmas/Boss/ITM_STI_Boss_TrueAdyr"), Scope.BOSS, True),
@@ -188,6 +213,163 @@ LOCATIONS: tuple[LocationData, ...] = (
 )
 
 
+SKYREST_LOCKED_MAPS = frozenset({"SB_GAM_Crypt", "SB_GAM_Dorms"})
+PILGRIMS_PERCH_KEYED_MAPS = frozenset({
+    # These sublevels contain the optional doors beside Gerlinde's cell and in
+    # the Sacred Resonance section. Assign the complete sublevel after the key
+    # when a door and pre-door floor share one cooked map.
+    "CS_GAM_Blacksmith",
+    "CS_GAM_Sanctuary",
+})
+LOWER_CALRATH_SKEIN_ANNEX_MAPS = frozenset({"LC_GAM_Mine", "LC_GAM_Mountain", "LC_GAM_MountBack"})
+MANSE_INTERIOR_MAPS = frozenset({
+    "CE_GAM_Main",
+    "CE_GAM_SecretArea",
+    "MA_GAM_Dining",
+    "MA_GAM_Dormitory",
+    "MA_GAM_Kitchen",
+    "MA_GAM_Refactory",
+    "MB_GAM_MainEXT",
+    "MB_GAM_MainINT",
+    "MC_GAM_MainEXT",
+    "MC_GAM_MainINT",
+})
+# Tancred's Key is obtained after the boss, so the ordinary MainINT pickups
+# encountered while descending the tower must remain pre-key. The hand-named
+# post-launch pickup actor below is the Flickering Flail in the locked cell in
+# Tancred's arena; its retail row and cooked actor placement were both checked.
+TANCRED_LOCKED_PICKUP_GUIDS = frozenset({"B7CE49384344F0C543029EB918C97852"})
+EMPYREAN_CHURCH_MAPS = frozenset({"HS_GAM_CathedralINT"})
+BRAMIS_ROYAL_WING_MAPS = frozenset({
+    "CA_GAM_BalconyFacade",
+    "CA_GAM_CouncilEXT",
+    "CA_GAM_CouncilINT",
+    "CA_GAM_CourtFacade",
+    "CA_GAM_DonjonAirlock",
+    # The donjon interior contains both the Royal Key route and earlier floor;
+    # the conservative whole-sublevel assignment prevents a keyed-room lock.
+    "CA_GAM_DonjonINT",
+    "CA_GAM_LibraryAirlock",
+    "CA_GAM_ThroneStairs",
+})
+
+INTERNAL_PICKUP_LOGIC_REGIONS: dict[str, str] = {
+    "CliffsideCity1": "Pilgrim's Perch",
+    "CliffsideCity2": "Pilgrim's Perch - Belled Rise",
+    "DeepMines": "Revelation Depths",
+    "Grove": "Abandoned Redcopse",
+    "HighSee": "The Empyrean",
+    "IceForest": "Fief of the Chill Curse",
+    "LowerCity": "Lower Calrath",
+    "Manse": "Manse of the Hallowed Brothers",
+    "Mines": "Sunless Skein",
+    "PenitentRoad": "Path of Devotion",
+    "PenitentTower": "Tower of Penance",
+    "RhogarCastle": "Bramis Castle",
+    "SkywalkBridge": "Skyrest Bridge",
+    "Swamp": "Forsaken Fen",
+    "SwampLCityConnector": "Fitzroy's Gorge",
+    "UpperCityA": "Upper Calrath",
+    "UpperCityB": "Upper Calrath",
+    "WomenArea": "Abbey of the Hallowed Sisters",
+}
+
+
+def pickup_logic_region(retail_row: str, guid: str) -> str:
+    """Return the audited key-gated subregion for a physical pickup."""
+    maps = PICKUP_SUBLEVELS[guid]
+    map_names = {PurePosixPath(path).stem for path in maps}
+    internal_region = retail_row.split("_", 2)[1]
+    if map_names & SKYREST_LOCKED_MAPS:
+        return "Skyrest Bridge - Locked Crypt"
+    if map_names & PILGRIMS_PERCH_KEYED_MAPS:
+        return "Pilgrim's Perch - Belled Rise"
+    if map_names & LOWER_CALRATH_SKEIN_ANNEX_MAPS:
+        return "Lower Calrath - Sunless Skein Annex"
+    if map_names & MANSE_INTERIOR_MAPS:
+        return "Manse - Kitchen and Interior"
+    if guid in TANCRED_LOCKED_PICKUP_GUIDS:
+        return "Tower of Penance - Lift and Prison"
+    if map_names & EMPYREAN_CHURCH_MAPS:
+        return "The Empyrean - Church"
+    if map_names & BRAMIS_ROYAL_WING_MAPS:
+        return "Bramis Castle - Royal Wing"
+    return INTERNAL_PICKUP_LOGIC_REGIONS[internal_region]
+
+
+def pickup_sublevel_label(guid: str) -> str:
+    """Create concise player-facing text from the audited cooked sublevel."""
+    stem = PurePosixPath(PICKUP_SUBLEVELS[guid][0]).stem
+    section = stem.split("_GAM_", 1)[-1]
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", section)
+    words = words.replace("INT", "interior").replace("EXT", "exterior")
+    return words.lower()
+
+
+def pickup_description(region: str, guid: str, retail_row: str) -> str:
+    realm_code = retail_row.split("_", 3)[2]
+    realm = {"AX": "Axiom", "UM": "Umbral", "QST": "quest"}[realm_code]
+    return f"{realm} pickup in {region}, {pickup_sublevel_label(guid)} section."
+
+
+def pickup_logic_audit_digest(rows: tuple[LocationData, ...]) -> str:
+    evidence = "\n".join(
+        "|".join((entry.guid or "", entry.retail_row or "", entry.logic_region or "", *PICKUP_SUBLEVELS[entry.guid or ""]))
+        for entry in rows
+    )
+    return hashlib.sha256(evidence.encode("utf-8")).hexdigest()
+
+
+# The retail random-loot map assigns a persistent FGuid to every pre-placed
+# pickup that the game itself considers randomizable. The tutorial Throwing
+# Stone row is deliberately absent; it remains vanilla so hanging corpses are
+# always accessible. These rows append after the published 0.1.x locations so
+# their numeric IDs never change.
+WORLD_PICKUP_LOCATIONS: tuple[LocationData, ...] = tuple(
+    LocationData(
+        name=name,
+        region=region,
+        marker=f"AP_GUID_{guid}",
+        scope=Scope.QUEST if quest else Scope.CORE,
+        missable=quest,
+        source="quest" if quest else "world_pickup",
+        guid=guid,
+        retail_row=retail_row,
+        description=pickup_description(region, guid, retail_row),
+        logic_region=pickup_logic_region(retail_row, guid),
+    )
+    for name, region, guid, retail_row, description, quest in PREPLACED_PICKUPS
+)
+
+assert set(PICKUP_SUBLEVELS) == {
+    entry.guid for entry in WORLD_PICKUP_LOCATIONS
+}, "retail pickup/sublevel audit is incomplete or stale"
+assert all(PICKUP_SUBLEVELS.values()), "retail pickup/sublevel audit contains an unresolved GUID"
+PICKUP_LOGIC_AUDIT_SHA256 = "2c313fad382aeadde0b7b10fb1f93785e69e4c89c2117b551de69d3b2e651ff7"
+assert pickup_logic_audit_digest(WORLD_PICKUP_LOCATIONS) == PICKUP_LOGIC_AUDIT_SHA256, (
+    "retail pickup identity, sublevel, or logic assignment changed; re-audit the affected placements"
+)
+
+# Added after the published location ranges so existing numeric IDs remain
+# stable. This quest item was always present in the item table but its vanilla
+# pickup marker was missing from the 0.1.x location table.
+ADDITIONAL_CURATED_LOCATIONS: tuple[LocationData, ...] = (
+    LocationData(
+        "Manse - Ancient Sentinel Banner",
+        "Manse of the Hallowed Brothers",
+        marker("Quest/ITM_QST_AncientSentinelBanner_1"),
+        Scope.QUEST,
+        False,
+        "quest",
+        logic_region="Manse - Kitchen and Interior",
+    ),
+)
+
+LOCATIONS: tuple[LocationData, ...] = (
+    CURATED_LOCATIONS + WORLD_PICKUP_LOCATIONS + ADDITIONAL_CURATED_LOCATIONS
+)
+
+
 ITEM_BY_NAME = {entry.name: entry for entry in ITEMS}
 LOCATION_BY_NAME = {entry.name: entry for entry in LOCATIONS}
 ITEM_NAME_TO_ID = {entry.name: BASE_ID + index for index, entry in enumerate(ITEMS, 1)}
@@ -202,24 +384,57 @@ REGION_CONNECTIONS: tuple[tuple[str, str, str | None], ...] = (
     ("Menu", "Defiled Sepulchre", None),
     ("Defiled Sepulchre", "Abandoned Redcopse", None),
     ("Abandoned Redcopse", "Skyrest Bridge", None),
+    ("Skyrest Bridge", "Skyrest Bridge - Locked Crypt", "Skyrest Bridge Key"),
     ("Skyrest Bridge", "Pilgrim's Perch", None),
+    ("Pilgrim's Perch", "Pilgrim's Perch - Belled Rise", "Pilgrim's Perch Key"),
     ("Pilgrim's Perch", "Forsaken Fen", None),
     ("Forsaken Fen", "Fitzroy's Gorge", None),
     ("Fitzroy's Gorge", "Lower Calrath", None),
     ("Lower Calrath", "Sunless Skein", None),
+    ("Lower Calrath", "Lower Calrath - Sunless Skein Annex", "Sunless Skein Key"),
     ("Sunless Skein", "Cistern", None),
     ("Cistern", "Revelation Depths", "Drainage Control Key"),
     ("Skyrest Bridge", "Fief of the Chill Curse", "Fief Key"),
-    ("Skyrest Bridge", "Path of Devotion", None),
-    ("Path of Devotion", "Manse of the Hallowed Brothers", "Pilgrim's Perch Key"),
-    ("Manse of the Hallowed Brothers", "Tower of Penance", None),
-    ("Manse of the Hallowed Brothers", "Abbey of the Hallowed Sisters", "Abbot Vernoff's Key"),
+    ("Pilgrim's Perch - Belled Rise", "Path of Devotion", None),
+    ("Pilgrim's Perch - Belled Rise", "Manse of the Hallowed Brothers", None),
+    ("Manse of the Hallowed Brothers", "Manse - Kitchen and Interior", "Monastery Kitchen Key"),
+    ("Manse - Kitchen and Interior", "Tower of Penance", "Abbot Vernoff's Key"),
+    ("Tower of Penance", "Tower of Penance - Lift and Prison", "Tancred's Key"),
+    ("Manse - Kitchen and Interior", "Abbey of the Hallowed Sisters", "Abbot Vernoff's Key"),
     ("Abbey of the Hallowed Sisters", "The Empyrean", None),
+    ("The Empyrean", "The Empyrean - Church", "Empyrean Church Key"),
     ("Cistern", "Upper Calrath", None),
     ("Upper Calrath", "Bramis Castle", "Rune of Adyr"),
-    ("Bramis Castle", "Rhogar Realm", None),
+    ("Bramis Castle", "Bramis Castle - Royal Wing", "Royal Key"),
+    ("Bramis Castle - Royal Wing", "Rhogar Realm", None),
     ("Revelation Depths", "Mother's Lull", None),
 )
+
+# Requirements for individual randomized checks whose vanilla interaction is
+# part of an item-driven quest chain. They are active only while quest items
+# are shuffled; with vanilla quest items, the game itself supplies the item.
+QUEST_LOCATION_REQUIREMENTS: dict[str, frozenset[str]] = {
+    "Path of Devotion - Umbral-Tinged Flayed Skin": frozenset({"Flayed Skin"}),
+    "Upper Calrath - Elegant Perfume": frozenset({"Spurned Progeny Eyeball"}),
+    "Abbey - Restored Sentinel Banner": frozenset(
+        {"Ancient Sentinel Banner", "Tattered Sentinel Banner"}
+    ),
+    "Bramis Castle - Empowered Rune of Adyr": frozenset({"Rune of Adyr"}),
+    "Mother's Lull - Withered Rune of Adyr": frozenset({"Rune of Adyr"}),
+}
+
+CHECK_UNLOCK_ITEMS = frozenset(
+    requirement
+    for _source, _target, requirement in REGION_CONNECTIONS
+    if requirement is not None
+) | frozenset(
+    requirement
+    for requirements in QUEST_LOCATION_REQUIREMENTS.values()
+    for requirement in requirements
+)
+assert CHECK_UNLOCK_ITEMS == {
+    item.name for item in ITEMS if item.progression
+}, "advancement classification must exactly match the items that unlock checks"
 
 
 # Compact area codes are shown by the client before each check.
@@ -255,32 +470,33 @@ LOCATION_DESCRIPTIONS: dict[str, str] = {
     "Skyrest - Skyrest Bridge Key": "Umbral pickup beneath Skyrest Bridge.",
     "Pilgrim's Perch - Gerlinde's Cell Key": "Found near Gerlinde's prison cell in Pilgrim's Perch.",
     "Pilgrim's Perch - Elevator Key": "Found near the elevator shortcut in Pilgrim's Perch.",
-    "Forsaken Fen - Dark Crusader's Call": "Obtained during Paladin Isaac's quest in Forsaken Fen.",
-    "Forsaken Fen - Dark Crusader's Wooden Cross": "Obtained during Paladin Isaac's quest in Forsaken Fen.",
-    "Fitzroy's Gorge - Catrin's Pendant": "Obtained during Byron and Winterberry's quest in Fitzroy's Gorge.",
-    "Lower Calrath - Adyr-Worshipper's Saw": "Obtained during Damarose's quest in Lower Calrath.",
-    "Lower Calrath - Sunless Skein Key": "Found in the Sunless Skein mine.",
-    "Sunless Skein - Drainage Control Key": "Dropped by Skinstealer in the Cistern.",
-    "Sunless Skein - Rune Tablet: Cracked": "Found in the Sunless Skein mine.",
-    "Cistern - Rune Tablet: Chipped": "Found in the Cistern.",
+    "Revelation Depths - Dark Crusader's Call": "Dropped after the Harrower Dervla encounter in Revelation Depths.",
+    "Lower Calrath - Dark Crusader's Wooden Cross": "Received from Paladin Isaac's stigma near the entrance to Lower Calrath.",
+    "Revelation Depths - Catrin's Pendant": "Held by Winterberry in Revelation Depths during Byron's quest.",
+    "Cistern - Adyr-Worshipper's Saw": "Found on the ritual altar in the Cistern.",
+    "Sunless Skein - Sunless Skein Key": "Found near the Vestige of Hooded Antuli in Sunless Skein.",
+    "Cistern - Drainage Control Key": "Dropped by Skinstealer in the Cistern.",
+    "Fitzroy's Gorge - Rune Tablet: Cracked": "Found near Drustan in Fitzroy's Gorge.",
+    "Lower Calrath - Rune Tablet: Chipped": "Found beside a fireplace on the route from Lower Calrath to Sunless Skein.",
     "Tower of Penance - Rune Tablet": "Found in the Tower of Penance.",
-    "Fief - Partially Charred Letter": "Obtained during Drustan's quest in the Fief.",
-    "Fief - Dark Crusader's Flayed Skin": "Found during Paladin Isaac's quest in the Fief.",
+    "Bramis Castle - Partially Charred Letter": "Found near the stairs outside the Bramis Castle entrance.",
+    "Path of Devotion - Umbral-Tinged Flayed Skin": "Dropped after the Paladin's Burden encounter in Path of Devotion.",
     "Manse - Abbot Vernoff's Key": "Found in the Manse of the Hallowed Brothers.",
     "Manse - Monastery Kitchen Key": "Found in the Manse kitchen area.",
-    "Manse - Poisoned Chalice": "Obtained during Exacter Dunmire's quest in the Manse.",
+    "Empyrean - Thorned Chalice": "Found after Judge Cleric in The Empyrean.",
     "Tower of Penance - Tancred's Key": "Obtained after Tancred and Reinhold in the Tower of Penance.",
     "Abbey - Tattered Sentinel Banner": "Obtained during Stomund's quest in the Abbey.",
     "Abbey - Restored Sentinel Banner": "Received during Stomund's quest in the Abbey.",
-    "Empyrean - Monastery Royal Key": "Unique pickup in The Empyrean.",
-    "Upper Calrath - Bramis Castle Key": "Unique pickup in Upper Calrath.",
+    "Manse - Ancient Sentinel Banner": "Found beneath the stairs in the Manse during Stomund's quest.",
+    "Bramis Castle - Royal Key": "Unique pickup within Bramis Castle before the locked royal wing.",
+    "Empyrean - Church Key": "Chest pickup on the upper route through The Empyrean.",
     "Upper Calrath - Elegant Perfume": "Obtained during the Tortured Prisoner's quest in Upper Calrath.",
     "Upper Calrath - Rune of Adyr": "Found in the Abbey or dropped by the Iron Wayfarer, depending on quest state.",
     "Bramis Castle - Empowered Rune of Adyr": "Obtained during the Inferno-ending sequence in Bramis Castle.",
     "Mother's Lull - Withered Rune of Adyr": "Obtained during the Umbral-ending sequence in Mother's Lull.",
-    "Mother's Lull - Umbral Wisp": "Obtained during the Dunmire and Molhu quest sequences in Mother's Lull.",
-    "Mother's Lull - Ancient Umbral Tome": "Obtained during Exacter Dunmire's quest in Mother's Lull.",
-    "Spurned Progeny - Eyeball": "Obtained during Damarose's quest after defeating the Spurned Progeny.",
+    "Tower of Penance - Umbral Wisp": "Received from Exacter Dunmire's stigma in the Tower of Penance.",
+    "Upper Calrath - Ancient Umbral Tome": "Soulflayed from an Umbral Belly in the tower between Sunless Skein and Upper Calrath.",
+    "Spurned Progeny - Eyeball": "Dropped after defeating the Spurned Progeny in Lower Calrath.",
 }
 
 
@@ -303,6 +519,22 @@ ALL_BOSSES_GOAL_LOCATIONS: tuple[str, ...] = (
     "Stigma - Lightreaper",
     "Stigma - Sundered Monarch",
 )
+
+# These sets are an executable statement of the route chains implied by the
+# regions above. They are used by the generation audit to prove that every
+# shuffled requirement needed by a goal is collected before Victory. Optional
+# keyed side sections are intentionally absent.
+ANY_ENDING_GOAL_REQUIREMENTS = frozenset({"Rune of Adyr", "Royal Key"})
+ALL_BOSSES_GOAL_REQUIREMENTS = frozenset({
+    "Pilgrim's Perch Key",
+    "Fief Key",
+    "Drainage Control Key",
+    "Monastery Kitchen Key",
+    "Abbot Vernoff's Key",
+    "Empyrean Church Key",
+    "Rune of Adyr",
+    "Royal Key",
+})
 
 
 def location_source(entry: LocationData) -> str:
@@ -330,6 +562,8 @@ def location_is_unsafe(entry: LocationData) -> bool:
 
 
 def location_description(entry: LocationData) -> str:
+    if entry.description:
+        return entry.description
     if entry.name in LOCATION_DESCRIPTIONS:
         return LOCATION_DESCRIPTIONS[entry.name]
     if entry.scope & Scope.BOSS:

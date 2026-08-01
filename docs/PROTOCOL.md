@@ -1,4 +1,4 @@
-# Game bridge protocol v3
+# Game bridge protocol v4
 
 All fields are percent-encoded UTF-8-compatible ASCII. Records end in LF.
 Every command after `RESET` and every event begins with the current session.
@@ -8,7 +8,7 @@ Every command after `RESET` and every event begins with the current session.
 | Verb | Fields after verb |
 | --- | --- |
 | `RESET` | protocol, session, seed, slot |
-| `MARK` | session, location ID, marker, suppress (0/1), shop (0/1) |
+| `MARK` | session, location ID, marker, suppress (0/1), shop (0/1), normalized pickup FGuid, retail row label |
 | `ITEM` | session, item ID, Unreal class path, quantity, item name, unique (0/1) |
 | `PLACE` | session, location ID, recipient slot, player, game, item ID, display name, own (0/1), same game (0/1), description |
 | `CHECKED` | session, location ID |

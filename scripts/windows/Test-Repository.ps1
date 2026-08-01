@@ -27,6 +27,9 @@ $pythonProtocol = [int][regex]::Match($pythonBridge, 'PROTOCOL_VERSION\s*=\s*(\d
 if ($luaProtocol -ne $pythonProtocol) {
     throw "Python bridge protocol ($pythonProtocol) and Lua bridge protocol ($luaProtocol) differ."
 }
+if ($luaBridge.IndexOf('B21D92B8406214F0AEAF6B9B239BB661', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    throw 'Lua bridge is missing the explicit tutorial Throwing Stone pickup guard.'
+}
 $worldSource = Get-Content -Raw -LiteralPath (Join-Path $root 'worlds\lotf\world.py')
 $slotVersion = [regex]::Match($worldSource, '"world_version":\s*"([^"]+)"').Groups[1].Value
 if ($slotVersion -ne $version) {
@@ -42,7 +45,9 @@ $required = @(
     'game-mod\LotFArchipelago\Scripts\bridge.lua',
     'game-mod\LotFArchipelago\Assets\archipelago.png',
     '.github\assets\lotf-icon.png',
-    'installer\windows\Install-LotFArchipelago.ps1'
+    'installer\windows\Install-LotFArchipelago.ps1',
+    'installer\windows\Install-LotFArchipelago.cmd',
+    'worlds\lotf\preplaced_pickups.py'
 )
 foreach ($relative in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $root $relative))) {
@@ -93,7 +98,10 @@ if ($GamePath) {
         'ImportFileAsTexture2D',
         'SaveGameSync',
         'SaveGameAsync',
-        'OnCreditScreenEndedCallback'
+        'OnCreditScreenEndedCallback',
+        'TryTakePickup',
+        'GetStringId',
+        'PrePlacedRandomLootMap'
     )
     $missingReflectionNames = @($requiredReflectionNames | Where-Object {
         $executableText.IndexOf($_, [System.StringComparison]::Ordinal) -lt 0
@@ -121,36 +129,48 @@ if ($GamePath) {
     }
     if ($RetocPath) {
         $retoc = (Resolve-Path -LiteralPath $RetocPath).Path
-        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-        $startInfo.FileName = $retoc
-        $startInfo.Arguments = "list --path `"$utoc`""
-        $startInfo.UseShellExecute = $false
-        $startInfo.RedirectStandardOutput = $true
-        $startInfo.RedirectStandardError = $true
-        $process = [System.Diagnostics.Process]::Start($startInfo)
-        $listing = $process.StandardOutput.ReadToEnd() + "`n" + $process.StandardError.ReadToEnd()
-        $process.WaitForExit()
-        if ($process.ExitCode -ne 0) {
-            throw "retoc asset listing failed with exit code $($process.ExitCode)."
+        $manifestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('LotF-retoc-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $manifestRoot | Out-Null
+        try {
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = $retoc
+            $startInfo.Arguments = "manifest `"$utoc`""
+            $startInfo.WorkingDirectory = $manifestRoot
+            $startInfo.UseShellExecute = $false
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            $manifestLog = $process.StandardOutput.ReadToEnd() + "`n" + $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            $manifestPath = Join-Path $manifestRoot 'pakstore.json'
+            if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $manifestPath)) {
+                throw "retoc manifest failed with exit code $($process.ExitCode): $manifestLog"
+            }
+            $packageManifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+            $packageNames = @($packageManifest.oplog.entries | ForEach-Object {
+                $_.packagestoreentry.packagename
+            })
+            $relativeAssets = [regex]::Matches($dataText, 'item_asset\("([^"]+)"\)') |
+                ForEach-Object { $_.Groups[1].Value } |
+                Sort-Object -Unique
+            $expectedPaths = @($relativeAssets | ForEach-Object {
+                "/Game/Blueprints/Data/Equipment/Items/$_"
+            })
+            $expectedPaths += @(
+                '/Game/Blueprints/Data/Equipment/Items/Usables/VigorStones/ITM_CON_VigorStone_01',
+                '/Game/Core/Characters/Player/AnathemaPlayerCharacter_BP',
+                '/Game/Blueprints/Data/LootTables/DA_PrePlacedRandomLootMap'
+            )
+            $missingPaths = @($expectedPaths | Sort-Object -Unique | Where-Object { $_ -notin $packageNames })
+            if ($missingPaths.Count) {
+                throw "Game build is missing $($missingPaths.Count) exact cooked paths: $($missingPaths -join ', ')"
+            }
+            Write-Host "Validated $($expectedPaths.Count) exact cooked paths with retoc."
+        } finally {
+            if (Test-Path -LiteralPath $manifestRoot) {
+                Remove-Item -LiteralPath $manifestRoot -Recurse -Force
+            }
         }
-
-        $relativeAssets = [regex]::Matches($dataText, 'item_asset\("([^"]+)"\)') |
-            ForEach-Object { $_.Groups[1].Value } |
-            Sort-Object -Unique
-        $expectedPaths = @($relativeAssets | ForEach-Object {
-            "../../../LOTF2/Content/Blueprints/Data/Equipment/Items/$_.uasset"
-        })
-        $expectedPaths += @(
-            '../../../LOTF2/Content/Blueprints/Data/Equipment/Items/Usables/VigorStones/ITM_CON_VigorStone_01.uasset',
-            '../../../LOTF2/Content/Core/Characters/Player/AnathemaPlayerCharacter_BP.uasset'
-        )
-        $missingPaths = @($expectedPaths | Sort-Object -Unique | Where-Object {
-            $listing.IndexOf($_, [System.StringComparison]::OrdinalIgnoreCase) -lt 0
-        })
-        if ($missingPaths.Count) {
-            throw "Game build is missing $($missingPaths.Count) exact cooked paths: $($missingPaths -join ', ')"
-        }
-        Write-Host "Validated $($expectedPaths.Count) exact cooked paths with retoc."
 
         $scriptInfo = [System.Diagnostics.ProcessStartInfo]::new()
         $scriptInfo.FileName = $retoc

@@ -16,7 +16,6 @@ while (($#)); do
 done
 
 command -v zip >/dev/null || { printf 'zip is required.\n' >&2; exit 1; }
-command -v sha256sum >/dev/null || { printf 'sha256sum is required.\n' >&2; exit 1; }
 if ((skip_validation == 0)); then
     args=()
     [[ -n "$game_path" ]] && args+=(--game-path "$game_path")
@@ -40,15 +39,10 @@ cp -a -- "$root/worlds/lotf/." "$apworld_stage/"
 find "$apworld_stage" -type d -name __pycache__ -prune -exec rm -rf -- {} +
 (cd "$build/apworld" && zip -qr "$dist/lotf.apworld" lotf)
 
-mod_stage="$build/mod/LotFArchipelago"
-mkdir -p -- "$mod_stage"
-cp -a -- "$root/game-mod/LotFArchipelago/." "$mod_stage/"
-(cd "$build/mod" && zip -qr "$dist/LotF-Archipelago-Mod-$version.zip" LotFArchipelago)
-
 package_stage="$build/package/LotF-Archipelago-$version"
 mkdir -p -- "$package_stage/.github/assets" "$package_stage/docs" "$package_stage/worlds/lotf/docs" "$package_stage/game-mod/LotFArchipelago"
-cp -- "$dist/lotf.apworld" "$dist/LotF-Archipelago-Mod-$version.zip" "$package_stage/"
-cp -- "$root"/installer/windows/*.ps1 "$root"/installer/linux/*.sh "$package_stage/"
+cp -- "$dist/lotf.apworld" "$package_stage/"
+cp -- "$root"/installer/windows/*.ps1 "$root"/installer/windows/*.cmd "$root"/installer/linux/*.sh "$package_stage/"
 cp -- "$root/README.md" "$root/CHANGELOG.md" "$root/LICENSE" "$root/VERSION" "$package_stage/"
 cp -- "$root/player-options/Lords of the Fallen.yaml" "$package_stage/"
 cp -- "$root/.github/REPOSITORY_SETTINGS.md" "$package_stage/.github/"
@@ -63,8 +57,12 @@ cp -a -- "$package_stage" "$linux_package_parent/"
 linux_package_stage="$linux_package_parent/LotF-Archipelago-$version"
 rm -f -- "$package_stage"/*.sh
 rm -f -- "$linux_package_stage"/*.ps1
+rm -f -- "$linux_package_stage"/*.cmd
 
 (cd "$build/package" && zip -qr "$dist/LotF-Archipelago-$version-win64.zip" "LotF-Archipelago-$version")
 (cd "$linux_package_parent" && zip -qr "$dist/LotF-Archipelago-$version-linux.zip" "LotF-Archipelago-$version")
-(cd "$dist" && sha256sum -- lotf.apworld LotF-Archipelago-*.zip > SHA256SUMS.txt)
+bootstrap_stage="$build/windows-installer"
+mkdir -p -- "$bootstrap_stage"
+cp -- "$root/installer/windows/Install-LotFArchipelago.cmd" "$root/installer/windows/Install-LotFArchipelago.ps1" "$bootstrap_stage/"
+(cd "$bootstrap_stage" && zip -qr "$dist/LotF-Archipelago-Windows-Installer-$version.zip" .)
 printf 'Built release artifacts in %s\n' "$dist"

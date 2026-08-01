@@ -11,6 +11,13 @@ from Options import (
 )
 
 
+class LordsOfTheFallenAccessibility(ItemsAccessibility):
+    """Accessibility with Full as the Lords of the Fallen default."""
+
+    alias_true = ItemsAccessibility.option_full
+    default = ItemsAccessibility.option_full
+
+
 class Goal(Choice):
     """
     Condition which completes the Archipelago slot.
@@ -38,7 +45,7 @@ class IncludeWorldStigmas(DefaultOnToggle):
     display_name = "Include World Stigmas"
 
 
-class ShuffleKeyItems(Toggle):
+class ShuffleKeyItems(DefaultOnToggle):
     """
     Put traversal keys into the multiworld and replace their vanilla pickups.
 
@@ -49,24 +56,24 @@ class ShuffleKeyItems(Toggle):
     display_name = "Shuffle Key Items"
 
 
-class ShuffleQuestItems(Toggle):
+class ShuffleQuestItems(DefaultOnToggle):
     """
     Put unique quest objects into the multiworld and replace their vanilla
     pickups. Quest checks are permanently barred from useful and progression
     placement, but changing or failing an NPC quest may still make the vanilla
-    quest itself impossible. Recommended only for experimental seeds.
+    quest itself impossible. Use a fresh character for every generated seed.
     """
 
     display_name = "Shuffle Quest Items"
 
 
-class LocalKeyItems(DefaultOnToggle):
+class LocalKeyItems(Toggle):
     """Keep traversal keys in this Lords of the Fallen world."""
 
     display_name = "Local Key Items"
 
 
-class EarlyPilgrimsPerchKey(DefaultOnToggle):
+class EarlyPilgrimsPerchKey(Toggle):
     """Place Pilgrim's Perch Key in an early local sphere when shuffled."""
 
     display_name = "Early Pilgrim's Perch Key"
@@ -85,12 +92,12 @@ class RemembranceItems(DefaultOnToggle):
 
 
 class WeaponUpgradeItems(Range):
-    """Number of Deralium upgrade bundles added before filler."""
+    """Number of Deralium deliveries from one vanilla +10 weapon set."""
 
-    display_name = "Weapon Upgrade Bundles"
+    display_name = "Weapon Upgrade Items"
     range_start = 0
     range_end = 30
-    default = 8
+    default = 30
 
 
 class SanguinarixUpgradeItems(Range):
@@ -99,7 +106,7 @@ class SanguinarixUpgradeItems(Range):
     display_name = "Sanguinarix Upgrades"
     range_start = 0
     range_end = 20
-    default = 5
+    default = 20
 
 
 class LampUpgradeItems(Range):
@@ -108,16 +115,47 @@ class LampUpgradeItems(Range):
     display_name = "Umbral Lamp Upgrades"
     range_start = 0
     range_end = 3
-    default = 2
+    default = 3
+
+
+class ItemSmoothing(Choice):
+    """Control how strongly item value follows logical sphere and area order."""
+
+    option_off = 0
+    option_semi = 1
+    option_full = 2
+    default = option_off
+
+
+class VigorSkullSmoothing(ItemSmoothing):
+    """
+    Arrange Vigor Skulls from lower-value early rewards to higher-value late
+    rewards. Semi keeps a broad curve while randomizing nearby values; Full
+    enforces the strongest available low-to-high ordering.
+    """
+
+    display_name = "Vigor Skull Smoothing"
+
+
+class WeaponUpgradeSmoothing(ItemSmoothing):
+    """
+    Arrange Deralium from early Small Fragments through late Deralium Chunks.
+    Semi randomizes within nearby portions of the curve; Full enforces the
+    strongest available low-to-high ordering.
+    """
+
+    display_name = "Weapon Upgrade Smoothing"
 
 
 class MissableLocationBehavior(Choice):
     """
-    How to handle NPC-quest, ending-dependent, and other unsafe checks.
+    How to handle additional NPC-quest, ending-dependent, and unsafe checks.
 
     Forbid Progression keeps them as filler-only checks. Remove omits them.
     There is intentionally no Allow mode: unsafe checks can never contain an
     advancement or useful item, even through user exclusion/plando settings.
+    The fixed physical-pickup set is never removed; its unsafe rows remain
+    filler-only so every eligible pickup still reports a check.
     """
 
     display_name = "Missable Location Behavior"
@@ -155,7 +193,7 @@ class ItemDeliveryDelay(Range):
 
 @dataclass
 class LordsOfTheFallenOptions(PerGameCommonOptions):
-    accessibility: ItemsAccessibility
+    accessibility: LordsOfTheFallenAccessibility
     goal: Goal
     include_quest_locations: IncludeQuestLocations
     include_world_stigmas: IncludeWorldStigmas
@@ -168,6 +206,8 @@ class LordsOfTheFallenOptions(PerGameCommonOptions):
     weapon_upgrade_items: WeaponUpgradeItems
     sanguinarix_upgrade_items: SanguinarixUpgradeItems
     lamp_upgrade_items: LampUpgradeItems
+    vigor_skull_smoothing: VigorSkullSmoothing
+    weapon_upgrade_smoothing: WeaponUpgradeSmoothing
     missable_location_behavior: MissableLocationBehavior
     death_link: DeathLink
     death_link_amnesty: DeathLinkAmnesty
@@ -193,6 +233,10 @@ option_groups = [
             LampUpgradeItems,
         ],
     ),
+    OptionGroup(
+        "Item Smoothing",
+        [VigorSkullSmoothing, WeaponUpgradeSmoothing],
+    ),
     OptionGroup("Links", [DeathLink, DeathLinkAmnesty]),
     OptionGroup("Client", [ItemDeliveryDelay]),
 ]
@@ -209,7 +253,9 @@ option_presets = {
     "Full Multiworld": {
         "shuffle_key_items": True,
         "shuffle_quest_items": True,
-        "local_key_items": True,
+        "local_key_items": False,
+        "early_pilgrims_perch_key": False,
+        "early_fief_key": False,
         "include_quest_locations": True,
         "include_world_stigmas": True,
     },

@@ -18,12 +18,21 @@ class LordsOfTheFallenLocation(Location):
 
 def enabled_locations(world: "LordsOfTheFallenWorld"):
     for entry in LOCATIONS:
-        if entry.suppress_group == "quest" and not world.options.include_quest_locations:
+        # Stable retail pickup GUIDs are the fixed physical-check set. Options
+        # may remove additional curated quest/stigma checks, but never turn a
+        # physical pickup back into an unreported vanilla interaction.
+        is_physical_pickup = bool(entry.guid)
+        if (
+            not is_physical_pickup
+            and (entry.suppress_group == "quest" or entry.scope == Scope.QUEST)
+            and not world.options.include_quest_locations
+        ):
             continue
         if entry.scope == Scope.STIGMA and not world.options.include_world_stigmas:
             continue
         if (
-            location_is_unsafe(entry)
+            not is_physical_pickup
+            and location_is_unsafe(entry)
             and world.options.missable_location_behavior == MissableLocationBehavior.option_remove
         ):
             continue
@@ -32,7 +41,7 @@ def enabled_locations(world: "LordsOfTheFallenWorld"):
 
 def create_locations(world: "LordsOfTheFallenWorld") -> None:
     for entry in enabled_locations(world):
-        region = world.get_region(entry.region)
+        region = world.get_region(entry.logic_region or entry.region)
         location = LordsOfTheFallenLocation(
             world.player,
             entry.name,

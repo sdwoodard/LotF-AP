@@ -5,6 +5,7 @@ from unittest import TestCase
 from NetUtils import NetworkItem
 
 from ..client.client import LordsOfTheFallenContext
+from ..client.bridge import PROTOCOL_VERSION
 from ..data import GAME
 
 
@@ -81,10 +82,16 @@ class _Bridge:
 
 
 class TestClientRecoveryState(TestCase):
+    def test_room_info_seed_is_retained_for_diagnostics_and_recovery(self) -> None:
+        context = object.__new__(LordsOfTheFallenContext)
+        context.seed_name = None
+        context.on_package("RoomInfo", {"seed_name": "88619253776184603392"})
+        self.assertEqual("88619253776184603392", context.room_seed_name())
+
     def test_pickup_safety_profile_is_explicit(self) -> None:
         context = object.__new__(LordsOfTheFallenContext)
         context.slot_data = {"options": {"shuffle_key_items": 0, "shuffle_quest_items": 0}}
-        self.assertIn("conservative", context.pickup_safety_profile())
+        self.assertIn("world-pickup randomization", context.pickup_safety_profile())
         context.slot_data["options"]["shuffle_quest_items"] = 1
         self.assertIn("experimental", context.pickup_safety_profile())
         self.assertIn("quest items", context.pickup_safety_profile())
@@ -95,7 +102,10 @@ class TestClientRecoveryState(TestCase):
         context.bridge_ready = True
         context.bridge_status = ""
         context.diagnostic = _Diagnostic()
-        event = SimpleNamespace(verb="HELLO", fields=("session", "9.9.9", "3", "boot"))
+        event = SimpleNamespace(
+            verb="HELLO",
+            fields=("session", "9.9.9", str(PROTOCOL_VERSION), "boot"),
+        )
         asyncio.run(context._handle_bridge_event(event))
         self.assertFalse(context.bridge_ready)
         self.assertIn("Package mismatch", context.bridge_status)

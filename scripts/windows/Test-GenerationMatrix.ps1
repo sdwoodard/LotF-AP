@@ -6,8 +6,8 @@ param(
     [string]$ApworldPath,
     [int]$Seed = 20260801,
     [int]$SoloCases = 256,
-    [int]$SameGameCases = 512,
-    [int]$SameGameSlots = 4,
+    [int]$SameGameCases = 3328,
+    [int]$SameGameSlots = 8,
     [int]$MixedCases = 384,
     [int]$MixedLotFSlots = 2,
     [string]$ReportPath

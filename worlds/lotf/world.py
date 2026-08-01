@@ -13,21 +13,24 @@ from .data import (
     ITEM_NAME_TO_ID,
     LOCATION_NAME_TO_ID,
     LOCATIONS,
+    QUEST_LOCATION_REQUIREMENTS,
     REGION_PREFIXES,
     location_description,
     location_is_unsafe,
     location_source,
 )
 from .options import Goal, LordsOfTheFallenOptions
+from .smoothing import apply_item_smoothing
 from .web_world import LordsOfTheFallenWebWorld
 
 
 class LordsOfTheFallenWorld(World):
     """
     Lords of the Fallen is a dark-fantasy action RPG set across the parallel
-    realms of Axiom and Umbral. This integration turns unique pickups and
-    remembrance stigmas into multiworld checks and can shuffle progression
-    keys, quest objects, boss remembrances, and upgrade materials.
+    realms of Axiom and Umbral. This integration turns eligible pre-placed
+    physical pickups and remembrance stigmas into multiworld checks and can
+    shuffle progression keys, quest objects, boss remembrances, upgrades, and
+    common consumables.
     """
 
     game = GAME
@@ -51,6 +54,13 @@ class LordsOfTheFallenWorld(World):
     def set_rules(self) -> None:
         rules.set_rules(self)
 
+    @classmethod
+    def stage_post_fill(cls, multiworld) -> None:
+        apply_item_smoothing(
+            multiworld,
+            list(multiworld.get_game_worlds(cls.game)),
+        )
+
     def get_filler_item_name(self) -> str:
         return "Vigor Cache"
 
@@ -58,12 +68,12 @@ class LordsOfTheFallenWorld(World):
         enabled_names = {entry.name for entry in locations.enabled_locations(self)}
         marker_rows = []
         for entry in LOCATIONS:
-            suppress = (
+            enabled = entry.name in enabled_names
+            suppress = bool(entry.guid) or (
                 entry.suppress_group == "key" and bool(self.options.shuffle_key_items)
             ) or (
                 entry.suppress_group == "quest" and bool(self.options.shuffle_quest_items)
             )
-            enabled = entry.name in enabled_names
             if not enabled and not suppress:
                 continue
             marker_rows.append(
@@ -72,12 +82,17 @@ class LordsOfTheFallenWorld(World):
                     # deliberately removed from the generated pool.
                     "location": LOCATION_NAME_TO_ID[entry.name] if enabled else 0,
                     "marker": entry.marker,
+                    "guid": entry.guid or "",
+                    "retail_row": entry.retail_row or "",
                     "suppress": suppress,
                     "region": entry.region,
                     "prefix": REGION_PREFIXES[entry.region],
                     "description": location_description(entry),
                     "unsafe": location_is_unsafe(entry),
                     "source": location_source(entry),
+                    "requirements": sorted(
+                        QUEST_LOCATION_REQUIREMENTS.get(entry.name, frozenset())
+                    ),
                 }
             )
 
@@ -96,7 +111,7 @@ class LordsOfTheFallenWorld(World):
                 LOCATION_NAME_TO_ID[name] for name in ALL_BOSSES_GOAL_LOCATIONS
             ]
         return {
-            "world_version": "0.1.1",
+            "world_version": "0.2.0",
             "markers": marker_rows,
             "items": item_rows,
             "goal_locations": goal_locations,

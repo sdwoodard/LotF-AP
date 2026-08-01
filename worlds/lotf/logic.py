@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 
-from .data import ITEM_BY_NAME, REGION_CONNECTIONS
+from .data import ITEM_BY_NAME, QUEST_LOCATION_REQUIREMENTS, REGION_CONNECTIONS
 
 
 def requirement_is_active(
@@ -46,3 +46,17 @@ def reachable_regions(
             reached.add(target)
             changed = True
     return reached
+
+
+def location_requirements_met(
+    location_name: str,
+    received_items: Collection[str],
+    *,
+    shuffle_quest_items: bool,
+) -> bool:
+    """Return whether item-driven requirements for one check are satisfied."""
+    if not shuffle_quest_items:
+        return True
+    return QUEST_LOCATION_REQUIREMENTS.get(location_name, frozenset()).issubset(
+        received_items
+    )

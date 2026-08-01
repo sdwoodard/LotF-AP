@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from ..client.bridge import GameBridge, decode, encode
+from ..client.bridge import PROTOCOL_VERSION, GameBridge, decode, encode
 
 
 class TestGameBridge(TestCase):
@@ -28,7 +28,10 @@ class TestGameBridge(TestCase):
             payload = bridge.commands_path.read_bytes()
 
             payload.decode("ascii")
-            self.assertIn(b"RESET\t3\tsession\tseed%20name\tLamp%20bearer\n", payload)
+            self.assertIn(
+                f"RESET\t{PROTOCOL_VERSION}\tsession\tseed%20name\tLamp%20bearer\n".encode(),
+                payload,
+            )
             self.assertTrue(payload.endswith(b"PING\tsession\n"))
 
     def test_unicode_and_protocol_delimiters_round_trip(self) -> None:
@@ -59,7 +62,14 @@ class TestGameBridge(TestCase):
                 "session",
                 {
                     "markers": [
-                        {"location": 123, "marker": "ITM_KEY_Test", "suppress": True, "source": "shop"}
+                        {
+                            "location": 123,
+                            "marker": "ITM_KEY_Test",
+                            "suppress": True,
+                            "source": "shop",
+                            "guid": "A" * 32,
+                            "retail_row": "1_Grove_AX_Easy",
+                        }
                     ],
                     "items": {
                         "456": {
@@ -86,7 +96,12 @@ class TestGameBridge(TestCase):
                 },
             )
             payload = bridge.commands_path.read_text(encoding="ascii")
-            self.assertIn("MARK\tsession\t123\tITM_KEY_Test\t1\t1\n", payload)
+            self.assertIn(
+                "MARK\tsession\t123\tITM_KEY_Test\t1\t1\t"
+                + "A" * 32
+                + "\t1_Grove_AX_Easy\n",
+                payload,
+            )
             self.assertIn("ITEM\tsession\t456\t/Game/Test.Test_C\t2\tTest%20Item\t1\n", payload)
             self.assertIn(
                 "PLACE\tsession\t123\t2\tAlice\tAnother%20Game\t789\tAlice%27s%20Useful%20Thing\t0\t0\tA%20wayfaring%20relic.\n",

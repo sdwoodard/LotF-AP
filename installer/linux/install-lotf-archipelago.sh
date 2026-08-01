@@ -53,6 +53,8 @@ if [[ -f "$mods_text" ]]; then
     temporary="$mods_text.tmp.$$"
     awk 'BEGIN{found=0} /^[[:space:]]*LotFArchipelago[[:space:]]*:/ {print "LotFArchipelago : 1"; found=1; next} {print} END{if(!found) print "LotFArchipelago : 1"}' "$mods_text" > "$temporary"
     mv -- "$temporary" "$mods_text"
+else
+    printf 'LotFArchipelago : 1\n' > "$mods_text"
 fi
 printf 'Installed LotF Archipelago into %s\n' "$target"
 printf 'Use this mod offline only; do not use matchmaking, co-op, invasions, or Easy Anti-Cheat.\n'

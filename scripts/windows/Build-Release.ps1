@@ -36,17 +36,11 @@ Compress-Archive -LiteralPath (Join-Path $build 'apworld\lotf') -DestinationPath
 $apworld = Join-Path $dist 'lotf.apworld'
 Move-Item -LiteralPath $apworldZip -Destination $apworld
 
-$modStage = Join-Path $build 'mod\LotFArchipelago'
-New-Item -ItemType Directory -Force -Path $modStage | Out-Null
-Copy-Item -Path (Join-Path $root 'game-mod\LotFArchipelago\*') -Destination $modStage -Recurse
-$modZip = Join-Path $dist "LotF-Archipelago-Mod-$version.zip"
-Compress-Archive -LiteralPath $modStage -DestinationPath $modZip -CompressionLevel Optimal
-
 $packageStage = Join-Path $build "package\LotF-Archipelago-$version"
 New-Item -ItemType Directory -Force -Path $packageStage | Out-Null
 Copy-Item -LiteralPath $apworld -Destination (Join-Path $packageStage 'lotf.apworld')
-Copy-Item -LiteralPath $modZip -Destination (Join-Path $packageStage (Split-Path -Leaf $modZip))
 Copy-Item -Path (Join-Path $root 'installer\windows\*.ps1') -Destination $packageStage
+Copy-Item -Path (Join-Path $root 'installer\windows\*.cmd') -Destination $packageStage
 Copy-Item -Path (Join-Path $root 'installer\linux\*.sh') -Destination $packageStage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $packageStage 'README.md')
 Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination (Join-Path $packageStage 'CHANGELOG.md')
@@ -74,14 +68,17 @@ Copy-Item -LiteralPath $packageStage -Destination $linuxPackageParent -Recurse
 $linuxPackageStage = Join-Path $linuxPackageParent "LotF-Archipelago-$version"
 Get-ChildItem -LiteralPath $packageStage -File -Filter '*.sh' | Remove-Item -Force
 Get-ChildItem -LiteralPath $linuxPackageStage -File -Filter '*.ps1' | Remove-Item -Force
+Get-ChildItem -LiteralPath $linuxPackageStage -File -Filter '*.cmd' | Remove-Item -Force
 
 $packageZip = Join-Path $dist "LotF-Archipelago-$version-win64.zip"
 Compress-Archive -LiteralPath $packageStage -DestinationPath $packageZip -CompressionLevel Optimal
 $linuxPackageZip = Join-Path $dist "LotF-Archipelago-$version-linux.zip"
 Compress-Archive -LiteralPath $linuxPackageStage -DestinationPath $linuxPackageZip -CompressionLevel Optimal
-$checksums = Get-ChildItem -LiteralPath $dist -File | ForEach-Object {
-    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-    "$hash  $($_.Name)"
-}
-Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Value $checksums -Encoding ASCII
+
+$bootstrapStage = Join-Path $build 'windows-installer'
+New-Item -ItemType Directory -Force -Path $bootstrapStage | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'installer\windows\Install-LotFArchipelago.cmd') -Destination $bootstrapStage
+Copy-Item -LiteralPath (Join-Path $root 'installer\windows\Install-LotFArchipelago.ps1') -Destination $bootstrapStage
+$bootstrapZip = Join-Path $dist "LotF-Archipelago-Windows-Installer-$version.zip"
+Compress-Archive -Path (Join-Path $bootstrapStage '*') -DestinationPath $bootstrapZip -CompressionLevel Optimal
 Write-Host "Built release artifacts in $dist"

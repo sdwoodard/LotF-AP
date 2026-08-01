@@ -14,6 +14,14 @@ class LordsOfTheFallenItem(Item):
     game = GAME
 
 
+VANILLA_WEAPON_UPGRADE_SEQUENCE = (
+    ("Small Deralium Fragment",) * 2
+    + ("Regular Deralium Nugget",) * 7
+    + ("Large Deralium Shard",) * 20
+    + ("Deralium Chunk",)
+)
+
+
 def create_item(world: "LordsOfTheFallenWorld", name: str) -> LordsOfTheFallenItem:
     data = ITEM_BY_NAME[name]
     if data.progression:
@@ -39,16 +47,7 @@ def create_items(world: "LordsOfTheFallenWorld") -> None:
         remembrance_names = [item.name for item in ITEM_BY_NAME.values() if item.category == "remembrance"]
         names.extend(remembrance_names)
 
-    upgrade_cycle = (
-        "Small Deralium Fragment",
-        "Regular Deralium Nugget",
-        "Large Deralium Shard",
-        "Deralium Chunk",
-    )
-    names.extend(
-        upgrade_cycle[index % len(upgrade_cycle)]
-        for index in range(world.options.weapon_upgrade_items.value)
-    )
+    names.extend(VANILLA_WEAPON_UPGRADE_SEQUENCE[: world.options.weapon_upgrade_items.value])
     names.extend("Saintly Quintessence" for _ in range(world.options.sanguinarix_upgrade_items.value))
     names.extend("Antediluvian Chisel" for _ in range(world.options.lamp_upgrade_items.value))
 
@@ -60,7 +59,15 @@ def create_items(world: "LordsOfTheFallenWorld") -> None:
         optional_names = [name for name in names if name not in required]
         names = (required_names + optional_names)[:location_count]
 
-    names.extend("Vigor Cache" for _ in range(location_count - len(names)))
+    filler_cycle = tuple(
+        item.name
+        for item in ITEM_BY_NAME.values()
+        if item.category == "filler" and item.name != "Vigor Cache"
+    )
+    names.extend(
+        filler_cycle[index % len(filler_cycle)]
+        for index in range(location_count - len(names))
+    )
 
     # Archipelago's EXCLUDED locations accept filler only. Preserve every
     # route requirement, then replace the least-prioritized useful extras with
@@ -79,7 +86,7 @@ def create_items(world: "LordsOfTheFallenWorld") -> None:
             break
         item = ITEM_BY_NAME[names[index]]
         if not item.progression and item.useful:
-            names[index] = "Vigor Cache"
+            names[index] = filler_cycle[index % len(filler_cycle)]
             replacements_needed -= 1
     if replacements_needed:
         raise RuntimeError(

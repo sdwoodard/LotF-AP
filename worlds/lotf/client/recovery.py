@@ -114,10 +114,13 @@ class SaveTracker:
         if len(candidates) == 1:
             return self.fingerprint(candidates[0]), "only one primary character save exists"
 
-        newest_time = max(path.stat().st_mtime_ns for path in candidates)
-        newest = [path for path in candidates if newest_time - path.stat().st_mtime_ns <= 2_000_000_000]
-        if len(newest) == 1 and time.time_ns() - newest[0].stat().st_mtime_ns <= 30_000_000_000:
-            return self.fingerprint(newest[0]), "selected the only character save written in the last 30 seconds"
+        by_mtime = sorted(candidates, key=lambda path: path.stat().st_mtime_ns, reverse=True)
+        newest = by_mtime[0]
+        # A clearly newest primary save is a safe automatic fallback when the
+        # game does not expose its LoadGame slot argument. A five-second lead
+        # avoids guessing among simultaneous migrations or cloud restores.
+        if newest.stat().st_mtime_ns - by_mtime[1].stat().st_mtime_ns >= 5_000_000_000:
+            return self.fingerprint(newest), "selected the uniquely newest primary character save"
         return None, "the active character save is ambiguous; no recovery grant will be attempted"
 
 

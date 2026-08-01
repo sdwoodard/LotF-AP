@@ -22,6 +22,9 @@ exe="$game_path/LOTF2/Binaries/Win64/LOTF2-Win64-Shipping.exe"
 if pgrep -afi 'EasyAntiCheat|start_protected_game' >/dev/null; then
     printf 'Easy Anti-Cheat is running; close it first.\n' >&2; exit 1
 fi
+for app_id_file in "$game_path/steam_appid.txt" "$(dirname -- "$exe")/steam_appid.txt"; do
+    [[ ! -e "$app_id_file" ]] || { printf 'Remove unsupported file: %s\n' "$app_id_file" >&2; exit 1; }
+done
 steamapps=$(cd -- "$game_path/../.." && pwd)
 steam_root=$(cd -- "$steamapps/.." && pwd)
 [[ -n "$compat_data" ]] || compat_data="$steamapps/compatdata/1501750"
@@ -34,7 +37,7 @@ data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipe
 mkdir -p -- "$data_root"
 data_root=$(cd -- "$data_root" && pwd)
 windows_data_root="Z:${data_root//\//\\}"
-command=(env "STEAM_COMPAT_DATA_PATH=$compat_data" "STEAM_COMPAT_CLIENT_INSTALL_PATH=$steam_root" "LOTF_AP_GAME_DATA_DIR=$windows_data_root" "$proton" run "$exe" -offline -NoEAC)
+command=(env "SteamAppId=1501750" "SteamGameId=1501750" "STEAM_COMPAT_DATA_PATH=$compat_data" "STEAM_COMPAT_CLIENT_INSTALL_PATH=$steam_root" "LOTF_AP_GAME_DATA_DIR=$windows_data_root" "$proton" run "$exe" -NoEAC)
 printf 'Starting the shipping executable directly for offline mod play.\n'
 if ((dry_run)); then printf '%q ' "${command[@]}"; printf '\n'; exit 0; fi
 exec "${command[@]}"

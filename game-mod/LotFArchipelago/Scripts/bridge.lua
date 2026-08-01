@@ -2,11 +2,12 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.1.1",
-    protocol_version = 3,
+    version = "0.2.0",
+    protocol_version = 4,
     session = nil,
     ready = false,
     markers = {},
+    pickup_guids = {},
     items = {},
     placements = {},
     goal = nil,
@@ -26,12 +27,24 @@ local Bridge = {
     active_cursor = 0,
     active_recovery = nil,
     pending_presentation = nil,
+    pending_presentation_location = nil,
     presentation_expires_ms = 0,
+    pending_suppression = nil,
+    pending_suppression_identity = nil,
+    suppression_expires_ms = 0,
+    unmapped_pickups = {},
     error_times = {},
     archipelago_icon = nil,
     icon_load_attempted = false,
     icon_lookup_depth = 0,
     count_warning_reported = false,
+    preserved_pickups = {
+        -- Defiled Sepulchre tutorial Throwing Stone. This must remain vanilla
+        -- so the player can knock down hanging corpses before or without a
+        -- client connection.
+        B21D92B8406214F0AEAF6B9B239BB661 = "tutorial Throwing Stone",
+    },
+    preserved_pickups_reported = {},
     delivery_delay = 1000,
     death_link = false,
     boot_id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999)),
@@ -65,6 +78,7 @@ local function reset(session)
     Bridge.session = session
     Bridge.ready = false
     Bridge.markers = {}
+    Bridge.pickup_guids = {}
     Bridge.items = {}
     Bridge.placements = {}
     Bridge.server_checked = {}
@@ -79,6 +93,11 @@ local function reset(session)
     Bridge.active_cursor = 0
     Bridge.active_recovery = nil
     Bridge.pending_presentation = nil
+    Bridge.pending_presentation_location = nil
+    Bridge.pending_suppression = nil
+    Bridge.pending_suppression_identity = nil
+    Bridge.unmapped_pickups = {}
+    Bridge.preserved_pickups_reported = {}
     Bridge.error_times = {}
     Bridge.last_player_name = nil
 end
@@ -98,6 +117,22 @@ local function object_name(value)
     end)
     if ok then
         return name
+    end
+    return nil
+end
+
+local function normalize_guid(value)
+    if value == nil then
+        return nil
+    end
+    local text = string.upper(tostring(value))
+    -- GetStringId normally returns four groups of eight hexadecimal digits.
+    -- Candidate scanning also accepts braces and conventional GUID grouping.
+    for candidate in string.gmatch(text, "[%x%-{}]+") do
+        local compact = string.gsub(candidate, "[^0-9A-F]", "")
+        if #compact == 32 then
+            return compact
+        end
     end
     return nil
 end
@@ -122,6 +157,40 @@ local function marker_in_name(name)
         end
     end
     return nil, nil
+end
+
+local function marker_for_value(value)
+    value = unwrap(value)
+    local marker, row = marker_in_name(object_name(value))
+    if row then
+        return marker, row, false
+    end
+    if not value then
+        return nil, nil, false
+    end
+    for _, method in ipairs({"GetItemData", "GetItemDataClass"}) do
+        local ok, nested = pcall(function()
+            return value[method](value)
+        end)
+        if ok then
+            marker, row = marker_in_name(object_name(unwrap(nested)))
+            if row then
+                return marker, row, true
+            end
+        end
+    end
+    for _, property in ipairs({"ItemData", "ItemDataClass"}) do
+        local ok, nested = pcall(function()
+            return value[property]
+        end)
+        if ok then
+            marker, row = marker_in_name(object_name(unwrap(nested)))
+            if row then
+                return marker, row, true
+            end
+        end
+    end
+    return nil, nil, false
 end
 
 local function find_class(path)
@@ -151,6 +220,45 @@ local function suppress_parameter(parameter)
     return ok
 end
 
+local function suppress_data_parameter(parameter)
+    local replacement = find_class(Bridge.replacement_asset)
+    if not replacement then
+        return false
+    end
+    local replacement_data = replacement
+    pcall(function()
+        replacement_data = replacement:GetDefaultObject()
+    end)
+    return pcall(function()
+        parameter:set(replacement_data)
+    end)
+end
+
+local function suppress_inventory_item(value)
+    value = unwrap(value)
+    if not value then
+        return false
+    end
+    local replacement = find_class(Bridge.replacement_asset)
+    if not replacement then
+        return false
+    end
+    local replacement_data = replacement
+    pcall(function()
+        replacement_data = replacement:GetDefaultObject()
+    end)
+    local class_ok = pcall(function()
+        value:SetItemDataClass(replacement)
+    end)
+    local data_ok = pcall(function()
+        value:SetItemData(replacement_data)
+    end)
+    pcall(function()
+        value:SetStock(1)
+    end)
+    return class_ok or data_ok
+end
+
 local function presentation_for_row(row)
     if not row or not row.location then
         return nil
@@ -160,7 +268,17 @@ end
 
 local function set_pending_presentation(row)
     Bridge.pending_presentation = presentation_for_row(row)
+    Bridge.pending_presentation_location = row and row.location or nil
     Bridge.presentation_expires_ms = now_ms() + 5000
+end
+
+local function record_row(row, identity)
+    set_pending_presentation(row)
+    if row.location and row.location > 0 and not State.is_checked(Bridge.session, row.location) then
+        State.mark_checked(Bridge.session, row.location)
+        Protocol.emit("CHECK", Bridge.session, row.location)
+        log("Checked location " .. tostring(row.location) .. " from " .. tostring(identity))
+    end
 end
 
 local function observe_parameter(parameter)
@@ -168,17 +286,16 @@ local function observe_parameter(parameter)
         return
     end
     local value = unwrap(parameter)
-    local name = object_name(value)
-    local _marker, row = marker_in_name(name)
+    local _marker, row, inventory_item = marker_for_value(value)
     if row then
         set_pending_presentation(row)
-        if row.suppress and not suppress_parameter(parameter) then
+        local suppressed = not row.suppress
+            or (inventory_item and suppress_inventory_item(value))
+            or (not inventory_item and suppress_parameter(parameter))
+        if suppressed then
+            record_row(row, _marker)
+        else
             report_error("Could not suppress marker " .. tostring(_marker) .. "; use the Safe First Seed preset for this build")
-        end
-        if row.location and row.location > 0 and not State.is_checked(Bridge.session, row.location) then
-            State.mark_checked(Bridge.session, row.location)
-            Protocol.emit("CHECK", Bridge.session, row.location)
-            log("Checked location " .. tostring(row.location))
         end
     end
 end
@@ -190,13 +307,131 @@ local function observe_call(context, ...)
     end
 end
 
-local inventory_hooks = {
-    "/Script/LOTF2.AnathemaItemContainer:AddItemToInventory",
-    "/Script/LOTF2.InventoryComponent:AddItem",
-    "/Script/LOTF2.InventoryComponent:AddItemByClass",
-    "/Script/LOTF2.InventoryComponent:AddItemByData",
-    "/Game/Core/Characters/Player/AnathemaPlayerCharacter_BP.AnathemaPlayerCharacter_BP_C:OnItemAddedToInventory",
-}
+local function pickup_identity(context)
+    local pickup = unwrap(context)
+    if not pickup then
+        return nil
+    end
+    for _, property in ipairs({"LOTF2SerializationComponent", "SerializationComponent"}) do
+        local ok, component = pcall(function()
+            return pickup[property]
+        end)
+        component = ok and unwrap(component) or nil
+        if component then
+            local string_ok, string_id = pcall(function()
+                return component:GetStringId()
+            end)
+            local guid = string_ok and normalize_guid(string_id) or nil
+            if guid then
+                return guid
+            end
+        end
+    end
+    return normalize_guid(object_name(pickup))
+end
+
+local function observe_pickup(context)
+    if not Bridge.ready or not Bridge.session then
+        return
+    end
+    local pickup = unwrap(context)
+    local inventory_ok, inventory_item = pcall(function()
+        return pickup:GetInventoryItem()
+    end)
+    inventory_item = inventory_ok and unwrap(inventory_item) or nil
+
+    local guid = pickup_identity(context)
+    local preserved = guid and Bridge.preserved_pickups[guid] or nil
+    if preserved then
+        if not Bridge.preserved_pickups_reported[guid] then
+            Bridge.preserved_pickups_reported[guid] = true
+            log("Preserved vanilla " .. preserved .. " at pickup GUID " .. guid)
+        end
+        return
+    end
+    local row = guid and Bridge.pickup_guids[guid] or nil
+    local marker = nil
+    if not row and inventory_item then
+        marker, row = marker_for_value(inventory_item)
+    end
+    if not row then
+        if guid and not Bridge.unmapped_pickups[guid] then
+            Bridge.unmapped_pickups[guid] = true
+            log("Observed unmapped pickup GUID " .. guid)
+        end
+        return
+    end
+
+
+    local identity = guid and ("pickup GUID " .. guid .. " (" .. tostring(row.retail_row) .. ")")
+        or ("pickup marker " .. tostring(marker))
+    set_pending_presentation(row)
+    if not row.suppress then
+        record_row(row, identity)
+        return
+    end
+
+    Bridge.pending_suppression = row
+    Bridge.pending_suppression_identity = identity
+    Bridge.suppression_expires_ms = now_ms() + 1000
+
+    -- Most pre-placed pickups already own their UInventoryItem before
+    -- TryTakePickup enters the inventory component. Mutating that instance is
+    -- the earliest and most reliable way to keep the vanilla item out.
+    if inventory_item and suppress_inventory_item(inventory_item) then
+        record_row(row, Bridge.pending_suppression_identity)
+        Bridge.pending_suppression = nil
+        Bridge.pending_suppression_identity = nil
+        log("Suppressed vanilla inventory item for " .. identity)
+    end
+end
+
+local function pending_suppression()
+    if Bridge.pending_suppression and now_ms() <= Bridge.suppression_expires_ms then
+        return Bridge.pending_suppression
+    end
+    Bridge.pending_suppression = nil
+    Bridge.pending_suppression_identity = nil
+    return nil
+end
+
+local function complete_pending_suppression(method)
+    local row = Bridge.pending_suppression
+    if not row then
+        return
+    end
+    record_row(row, Bridge.pending_suppression_identity or method)
+    Bridge.pending_suppression = nil
+    Bridge.pending_suppression_identity = nil
+    log("Suppressed vanilla pickup through " .. method)
+end
+
+local function observe_add_item(_context, item, ...)
+    if pending_suppression() and suppress_inventory_item(item) then
+        complete_pending_suppression("InventoryComponent:AddItem")
+    end
+    observe_call(_context, item, ...)
+end
+
+local function observe_add_item_by_class(_context, item_class, count, ...)
+    if pending_suppression() and suppress_parameter(item_class) then
+        pcall(function()
+            count:set(1)
+        end)
+        complete_pending_suppression("InventoryComponent:AddItemByClass")
+    end
+    observe_call(_context, item_class, count, ...)
+end
+
+local function observe_add_item_by_data(_context, item_data, count, ...)
+    if pending_suppression() and suppress_data_parameter(item_data) then
+        pcall(function()
+            count:set(1)
+        end)
+        complete_pending_suppression("InventoryComponent:AddItemByData")
+    end
+    observe_call(_context, item_data, count, ...)
+end
 
 local death_hooks = {
     "/Script/LOTF2.AnathemaPlayerCharacter:OnNotifyPlayerDeath",
@@ -247,6 +482,7 @@ local function lifecycle_hint(context, ...)
             "CurrentSlotIndex",
             "SelectedSaveSlot",
             "SaveGameSlot",
+            "SaveSlotName",
         }) do
             local ok, value = pcall(function()
                 return owner[property]
@@ -327,11 +563,17 @@ local function presentation_for_context(context)
     if not name then
         return nil
     end
-    if Bridge.pending_presentation and now_ms() <= Bridge.presentation_expires_ms
-        and string.find(name, "ITM_CON_VigorStone_01", 1, true) then
-        return Bridge.pending_presentation
-    end
     local _marker, row = marker_in_name(name)
+    if Bridge.pending_presentation and now_ms() <= Bridge.presentation_expires_ms then
+        -- GUID-backed pickups are changed to the harmless replacement item.
+        -- Scripted key/quest checks may retain their vanilla object when that
+        -- shuffle is disabled, but their pickup UI must still identify the
+        -- generated Archipelago placement rather than the safety item.
+        if string.find(name, "ITM_CON_VigorStone_01", 1, true)
+            or (row and row.location == Bridge.pending_presentation_location) then
+            return Bridge.pending_presentation
+        end
+    end
     if row and row.shop then
         return presentation_for_row(row)
     end
@@ -457,9 +699,16 @@ end
 
 local function register_hooks()
     register_presentation_hooks()
-    for _, path in ipairs(inventory_hooks) do
-        register_hook(path, observe_call)
-    end
+    register_hook("/Script/LOTF2.Pickup:TryTakePickup", observe_pickup)
+    register_hook("/Script/LOTF2.AnathemaItemContainer:TryOpenInteraction", observe_pickup)
+    register_hook("/Script/LOTF2.AnathemaItemContainer:AddItemToInventory", observe_call)
+    register_hook("/Script/LOTF2.InventoryComponent:AddItem", observe_add_item)
+    register_hook("/Script/LOTF2.InventoryComponent:AddItemByClass", observe_add_item_by_class)
+    register_hook("/Script/LOTF2.InventoryComponent:AddItemByData", observe_add_item_by_data)
+    register_hook(
+        "/Game/Core/Characters/Player/AnathemaPlayerCharacter_BP.AnathemaPlayerCharacter_BP_C:OnItemAddedToInventory",
+        observe_call
+    )
     if Bridge.death_link then
         for _, path in ipairs(death_hooks) do
             register_hook(path, function()
@@ -482,9 +731,17 @@ local function register_hooks()
         end
     end
     for _, path in ipairs(load_hooks) do
-        register_hook(path, function() end, function(context, ...)
-            report_loaded("save_manager", context, ...)
-        end)
+        if path == "/Script/LOTF2.LOTF2SaveGameManager:LoadGame" then
+            register_hook(path, function() end, function(context, slot_index, ...)
+                local slot = unwrap(slot_index)
+                local hint = type(slot) == "number" and string.format("Save%02d.sav", slot) or ""
+                report_loaded("save_manager", context, hint, slot_index, ...)
+            end)
+        else
+            register_hook(path, function() end, function(context, ...)
+                report_loaded("save_manager", context, ...)
+            end)
+        end
     end
     for _, path in ipairs(save_hooks) do
         register_hook(path, function() end, function(context, ...)
@@ -837,11 +1094,18 @@ local function process_record(fields)
         return
     end
     if verb == "MARK" then
-        Bridge.markers[fields[4]] = {
+        local row = {
             location = tonumber(fields[3]),
             suppress = fields[5] == "1",
             shop = fields[6] == "1",
+            guid = fields[7],
+            retail_row = fields[8],
         }
+        Bridge.markers[fields[4]] = row
+        local guid = normalize_guid(fields[7])
+        if guid then
+            Bridge.pickup_guids[guid] = row
+        end
     elseif verb == "ITEM" then
         Bridge.items[fields[3]] = {
             asset = fields[4],
@@ -944,6 +1208,15 @@ function Bridge.tick()
 
     if Bridge.pending_presentation and now_ms() > Bridge.presentation_expires_ms then
         Bridge.pending_presentation = nil
+        Bridge.pending_presentation_location = nil
+    end
+    if Bridge.pending_suppression and now_ms() > Bridge.suppression_expires_ms then
+        report_error(
+            "A randomized pickup was checked but its vanilla inventory mutation was not observed ("
+            .. tostring(Bridge.pending_suppression.retail_row) .. ")"
+        )
+        Bridge.pending_suppression = nil
+        Bridge.pending_suppression_identity = nil
     end
 
     local player = player_character()

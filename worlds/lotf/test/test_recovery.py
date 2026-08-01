@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import os
 from unittest import TestCase
 
 from ..client.recovery import (
@@ -69,3 +70,17 @@ class TestRecoveryLedger(TestCase):
             self.assertIsNotNone(identity)
             self.assertTrue(identity.path.endswith("Save00.sav"))
             self.assertIn("only one", reason)
+
+    def test_save_tracker_selects_clearly_newest_primary(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            older = root / "Save00.sav"
+            newest = root / "Save04.sav"
+            older.write_bytes(b"older")
+            newest.write_bytes(b"newest")
+            os.utime(older, ns=(1_000_000_000, 1_000_000_000))
+            os.utime(newest, ns=(10_000_000_000, 10_000_000_000))
+            identity, reason = SaveTracker(root).identify()
+            self.assertIsNotNone(identity)
+            self.assertTrue(identity.path.endswith("Save04.sav"))
+            self.assertIn("uniquely newest", reason)

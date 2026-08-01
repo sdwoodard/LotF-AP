@@ -2,10 +2,10 @@
 """Generate and inspect a broad Lords of the Fallen option matrix.
 
 Run this against an Archipelago source checkout with ``lotf.apworld`` installed
-in ``custom_worlds``. The default run covers every combination of the ten
-finite LotF choice/toggle dimensions and all three accessibility modes exactly
-once. Numeric options cycle through minimum, near-minimum, default,
-near-maximum, and maximum values.
+in ``custom_worlds``. The default run covers every combination of the finite
+LotF choice/toggle/smoothing dimensions and all three accessibility modes
+exactly once. The three upgrade-count options cover every valid integer; the
+remaining numeric options cover their important boundaries and defaults.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ GENERATION_STEPS = (
 
 CORE_DIMENSIONS: tuple[tuple[str, tuple[Any, ...]], ...] = (
     ("accessibility", ("full", "items", "minimal")),
+    ("vigor_skull_smoothing", ("off", "semi", "full")),
+    ("weapon_upgrade_smoothing", ("off", "semi", "full")),
     ("goal", ("any_ending", "all_bosses")),
     ("include_quest_locations", (False, True)),
     ("include_world_stigmas", (False, True)),
@@ -54,9 +56,9 @@ for _name, _values in CORE_DIMENSIONS:
 
 NUMERIC_CYCLES: dict[str, tuple[int, ...]] = {
     "progression_balancing": (0, 1, 50, 98, 99),
-    "weapon_upgrade_items": (0, 1, 8, 29, 30),
-    "sanguinarix_upgrade_items": (0, 1, 5, 19, 20),
-    "lamp_upgrade_items": (0, 1, 2, 3),
+    "weapon_upgrade_items": tuple(range(31)),
+    "sanguinarix_upgrade_items": tuple(range(21)),
+    "lamp_upgrade_items": tuple(range(4)),
     "death_link_amnesty": (1, 2, 5, 9, 10),
     "item_delivery_delay": (250, 251, 1000, 4999, 5000),
 }
@@ -67,8 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--archipelago-path", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=20260801)
     parser.add_argument("--solo-cases", type=int, default=256)
-    parser.add_argument("--same-game-cases", type=int, default=512)
-    parser.add_argument("--same-game-slots", type=int, default=4)
+    parser.add_argument("--same-game-cases", type=int, default=3328)
+    parser.add_argument("--same-game-slots", type=int, default=8)
     parser.add_argument("--mixed-cases", type=int, default=384)
     parser.add_argument("--mixed-lotf-slots", type=int, default=2)
     parser.add_argument("--report", type=Path)
@@ -121,19 +123,33 @@ LOTF_WORLD_SOURCE_REPORT = (
 )
 
 from worlds.lotf.data import (
+    ALL_BOSSES_GOAL_REQUIREMENTS,
     ALL_BOSSES_GOAL_LOCATIONS,
+    ANY_ENDING_GOAL_REQUIREMENTS,
     GRINDY_LOCATION_SOURCES,
     ITEM_BY_NAME,
     ITEM_NAME_TO_ID,
     LOCATION_NAME_TO_ID,
     LOCATIONS,
+    QUEST_LOCATION_REQUIREMENTS,
     REGION_CONNECTIONS,
     location_is_unsafe,
     location_source,
 )
 from worlds.lotf.locations import enabled_locations
-from worlds.lotf.logic import reachable_regions, requirement_is_active
-from worlds.lotf.options import Goal
+from worlds.lotf.logic import (
+    location_requirements_met,
+    reachable_regions,
+    requirement_is_active,
+)
+from worlds.lotf.items import VANILLA_WEAPON_UPGRADE_SEQUENCE
+from worlds.lotf.options import Goal, ItemSmoothing
+from worlds.lotf.options import LordsOfTheFallenAccessibility
+from worlds.lotf.smoothing import (
+    VIGOR_SKULL_RANKS,
+    WEAPON_UPGRADE_RANKS,
+    smoothing_location_sort_key,
+)
 
 
 class MatrixFailure(AssertionError):
@@ -191,6 +207,9 @@ def setup_multiworld(
             # item rules and before the remaining generation hooks.
             locality_rules(multiworld)
     distribute_items_restrictive(multiworld)
+    multiworld.lotf_pre_smoothing = {
+        id(location): location.item for location in multiworld.get_filled_locations()
+    }
     call_all(multiworld, "post_fill")
     call_all(multiworld, "finalize_multiworld")
     return multiworld
@@ -207,16 +226,7 @@ def expected_item_pool(world: Any) -> list[str]:
             item.name for item in ITEM_BY_NAME.values() if item.category == "remembrance"
         )
 
-    upgrade_cycle = (
-        "Small Deralium Fragment",
-        "Regular Deralium Nugget",
-        "Large Deralium Shard",
-        "Deralium Chunk",
-    )
-    names.extend(
-        upgrade_cycle[index % len(upgrade_cycle)]
-        for index in range(world.options.weapon_upgrade_items.value)
-    )
+    names.extend(VANILLA_WEAPON_UPGRADE_SEQUENCE[: world.options.weapon_upgrade_items.value])
     names.extend(
         "Saintly Quintessence"
         for _ in range(world.options.sanguinarix_upgrade_items.value)
@@ -238,7 +248,15 @@ def expected_item_pool(world: Any) -> list[str]:
         required = [name for name in names if name in progression_names]
         optional = [name for name in names if name not in progression_names]
         names = (required + optional)[:location_count]
-    names.extend("Vigor Cache" for _ in range(location_count - len(names)))
+    filler_cycle = tuple(
+        item.name
+        for item in ITEM_BY_NAME.values()
+        if item.category == "filler" and item.name != "Vigor Cache"
+    )
+    names.extend(
+        filler_cycle[index % len(filler_cycle)]
+        for index in range(location_count - len(names))
+    )
 
     excluded_count = sum(
         location.progress_type == LocationProgressType.EXCLUDED
@@ -254,7 +272,7 @@ def expected_item_pool(world: Any) -> list[str]:
             break
         item = ITEM_BY_NAME[names[index]]
         if not item.progression and item.useful:
-            names[index] = "Vigor Cache"
+            names[index] = filler_cycle[index % len(filler_cycle)]
             replacements -= 1
     require(not replacements, "Expected pool could not supply protected locations")
     return names
@@ -270,6 +288,7 @@ class Coverage:
         self.cross_lotf_items = 0
         self.nonlocal_keys = 0
         self.actual_counts: dict[str, set[int]] = defaultdict(set)
+        self.smoothing_changes: Counter[tuple[str, str]] = Counter()
 
     def record_options(self, config: dict[str, Any]) -> None:
         for name, value in config.items():
@@ -285,7 +304,9 @@ def audit_lotf_player(multiworld: MultiWorld, player: int, config: dict[str, Any
     COVERAGE.record_options(config)
 
     require(
-        world.options_dataclass.type_hints["accessibility"] is ItemsAccessibility,
+        world.options_dataclass.type_hints["accessibility"]
+        is LordsOfTheFallenAccessibility
+        and issubclass(LordsOfTheFallenAccessibility, ItemsAccessibility),
         "LotF accessibility is not the distinct full/items/minimal option type",
     )
     require(
@@ -406,6 +427,15 @@ def audit_lotf_player(multiworld: MultiWorld, player: int, config: dict[str, Any
                 f"Unsafe marker is not protected: {row}",
             )
 
+    physical_markers = [row for row in slot_data["markers"] if row.get("guid")]
+    require(
+        len(physical_markers) == 597
+        and all(int(row["location"]) > 0 and row["suppress"] for row in physical_markers),
+        f"Physical pickup coverage changed for player {player}: "
+        f"count={len(physical_markers)} disabled_or_unsuppressed="
+        f"{sum(not int(row['location']) or not row['suppress'] for row in physical_markers)}",
+    )
+
     expected_goal_ids = (
         {LOCATION_NAME_TO_ID[name] for name in ALL_BOSSES_GOAL_LOCATIONS}
         if world.options.goal == Goal.option_all_bosses
@@ -483,6 +513,101 @@ def audit_gate_rules(multiworld: MultiWorld, player: int) -> None:
             f"Gate {source} -> {target} did not open with {requirement}",
         )
 
+    if shuffle_quests:
+        available_locations = {
+            location.name for location in multiworld.get_locations(player)
+        }
+        for location_name, requirements in QUEST_LOCATION_REQUIREMENTS.items():
+            if location_name not in available_locations:
+                continue
+            state = CollectionState(multiworld)
+            for item in ITEM_BY_NAME.values():
+                if not item.progression or item.name in requirements:
+                    continue
+                if (item.category == "key" and shuffle_keys) or (
+                    item.category == "quest" and shuffle_quests
+                ):
+                    state.collect(world.create_item(item.name), True)
+            require(
+                not world.get_location(location_name).can_reach(state),
+                f"Quest check {location_name} is reachable without {sorted(requirements)}",
+            )
+            for requirement in requirements:
+                state.collect(world.create_item(requirement), True)
+            require(
+                world.get_location(location_name).can_reach(state),
+                f"Quest check {location_name} did not open with {sorted(requirements)}",
+            )
+
+
+def audit_smoothing(multiworld: MultiWorld, lotf_players: Iterable[int]) -> None:
+    spheres = []
+    for sphere in multiworld.get_spheres():
+        if not sphere:
+            break
+        spheres.append(sphere)
+    before = multiworld.lotf_pre_smoothing
+
+    for player in lotf_players:
+        world = multiworld.worlds[player]
+        for option_name, ranks in (
+            ("vigor_skull_smoothing", VIGOR_SKULL_RANKS),
+            ("weapon_upgrade_smoothing", WEAPON_UPGRADE_RANKS),
+        ):
+            mode = getattr(world.options, option_name).value
+            locations = []
+            for sphere in spheres:
+                rows = [
+                    location
+                    for location in sphere
+                    if not location.locked
+                    and location.item is not None
+                    and location.item.player == player
+                    and location.item.name in ranks
+                ]
+                rows.sort(key=smoothing_location_sort_key)
+                locations.extend(rows)
+
+            before_items = [before[id(location)] for location in locations]
+            after_items = [location.item for location in locations]
+            require(
+                Counter(item.name for item in before_items)
+                == Counter(item.name for item in after_items),
+                f"{option_name} changed the item multiset for player {player}",
+            )
+            changed = sum(
+                old is not new for old, new in zip(before_items, after_items)
+            )
+            COVERAGE.smoothing_changes[(option_name, getattr(world.options, option_name).current_key)] += changed
+
+            if mode == ItemSmoothing.option_off:
+                require(
+                    changed == 0,
+                    f"Disabled {option_name} moved {changed} item placements",
+                )
+                continue
+
+            rank_sequence = [ranks[item.name] for item in after_items]
+            if mode == ItemSmoothing.option_full:
+                require(
+                    rank_sequence == sorted(rank_sequence),
+                    f"Full {option_name} is not monotonic for player {player}: {rank_sequence}",
+                )
+            else:
+                band_size = max(3, (len(rank_sequence) + 7) // 8)
+                bands = [
+                    rank_sequence[start : start + band_size]
+                    for start in range(0, len(rank_sequence), band_size)
+                ]
+                require(
+                    all(
+                        max(left) <= min(right)
+                        for left, right in zip(bands, bands[1:])
+                        if left and right
+                    ),
+                    f"Semi {option_name} escaped its smoothing bands for player {player}",
+                )
+
 
 def audit_spheres(multiworld: MultiWorld, lotf_players: Iterable[int]) -> int:
     lotf_players = tuple(lotf_players)
@@ -521,6 +646,14 @@ def audit_spheres(multiworld: MultiWorld, lotf_players: Iterable[int]) -> int:
                     require(
                         location.parent_region.name in shared_regions,
                         f"AP/shared logic disagreement before sphere {sphere_index}: {location}",
+                    )
+                    require(
+                        location_requirements_met(
+                            location.name,
+                            received,
+                            shuffle_quest_items=bool(world.options.shuffle_quest_items),
+                        ),
+                        f"AP/shared check logic disagreement before sphere {sphere_index}: {location}",
                     )
 
         for location in sphere:
@@ -567,19 +700,20 @@ def audit_spheres(multiworld: MultiWorld, lotf_players: Iterable[int]) -> int:
 
         shuffle_keys = bool(world.options.shuffle_key_items)
         shuffle_quests = bool(world.options.shuffle_quest_items)
-        required_for_goal: set[str] = set()
-        if world.options.goal == Goal.option_all_bosses:
-            required_for_goal.update(
-                requirement
-                for _source, _target, requirement in REGION_CONNECTIONS
-                if requirement_is_active(
-                    requirement,
-                    shuffle_key_items=shuffle_keys,
-                    shuffle_quest_items=shuffle_quests,
-                )
+        declared_requirements = (
+            ALL_BOSSES_GOAL_REQUIREMENTS
+            if world.options.goal == Goal.option_all_bosses
+            else ANY_ENDING_GOAL_REQUIREMENTS
+        )
+        required_for_goal = {
+            requirement
+            for requirement in declared_requirements
+            if requirement_is_active(
+                requirement,
+                shuffle_key_items=shuffle_keys,
+                shuffle_quest_items=shuffle_quests,
             )
-        elif shuffle_quests:
-            required_for_goal.add("Rune of Adyr")
+        }
 
         require(player in victory_sphere, f"No reachable Victory event for player {player}")
         for name in required_for_goal:
@@ -644,6 +778,7 @@ def run_case(
         for player, config in zip(lotf_players, option_rows):
             audit_lotf_player(multiworld, player, config)
             audit_gate_rules(multiworld, player)
+        audit_smoothing(multiworld, lotf_players)
         COVERAGE.spheres += audit_spheres(multiworld, lotf_players)
         audit_cross_world_placements(multiworld)
     except Exception as error:
@@ -665,12 +800,16 @@ def run_case(
 
 
 def assert_coverage(total_configurations: int) -> None:
-    if total_configurations >= CORE_COMBINATION_COUNT:
-        for name, expected_values in CORE_DIMENSIONS:
-            require(
-                COVERAGE.values[name] == set(expected_values),
-                f"Incomplete value coverage for {name}: {COVERAGE.values[name]}",
-            )
+    for name, expected_values in CORE_DIMENSIONS:
+        require(
+            COVERAGE.values[name] == set(expected_values),
+            f"Incomplete value coverage for {name}: {COVERAGE.values[name]}",
+        )
+    require(
+        total_configurations >= CORE_COMBINATION_COUNT,
+        f"Only {total_configurations} configurations were tested; "
+        f"{CORE_COMBINATION_COUNT} are needed for exhaustive finite-option coverage",
+    )
     for name, expected_values in NUMERIC_CYCLES.items():
         require(
             COVERAGE.values[name] == set(expected_values),
@@ -693,6 +832,12 @@ def assert_coverage(total_configurations: int) -> None:
             len(observed) > 1,
             f"Generated count never changed for {item_name}: {observed}",
         )
+    for option_name in ("vigor_skull_smoothing", "weapon_upgrade_smoothing"):
+        for mode in ("semi", "full"):
+            require(
+                COVERAGE.smoothing_changes[(option_name, mode)] > 0,
+                f"{option_name}={mode} never changed a placement",
+            )
 
 
 def serializable_values() -> dict[str, list[Any]]:
@@ -743,6 +888,10 @@ def main() -> None:
         "option_values": serializable_values(),
         "observed_generated_item_counts": {
             name: sorted(values) for name, values in sorted(COVERAGE.actual_counts.items())
+        },
+        "smoothing_placement_changes": {
+            f"{name}:{mode}": count
+            for (name, mode), count in sorted(COVERAGE.smoothing_changes.items())
         },
         "elapsed_seconds": round(elapsed, 3),
     }

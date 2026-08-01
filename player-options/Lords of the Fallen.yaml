@@ -4,6 +4,9 @@
 # indentation; do not use tabs. Text after a # is a comment and may be changed
 # or removed without affecting generation. Boolean options use true/false.
 # Choice options use the lowercase values listed in their nearby comments.
+# Every eligible pre-placed physical world pickup is always an Archipelago
+# check. The tutorial Throwing Stone is the sole deliberate vanilla exception.
+# The location-pool options below control additional quest and stigma checks.
 
 # This is the name shown to every player in the multiworld. It must be unique
 # within the room. Keep it reasonably short because it appears in item messages.
@@ -29,11 +32,11 @@ Lords of the Fallen:
   progression_balancing: 50
 
   # Determines what the generator guarantees can be collected before goal.
-  # - items: every advancement item can be reached (recommended).
+  # - items: every advancement item can be reached.
   # - minimal: only enough advancement to complete the selected goal is assured.
-  # - full: every location must remain reachable; this is the most restrictive.
-  # "items" is safest while location coverage and logic are still developing.
-  accessibility: items
+  # - full: every location must remain reachable; this is the most restrictive
+  #   and is the default while the integration is still being validated.
+  accessibility: full
 
   # Victory condition. Supported values:
   # - any_ending: complete the slot when the credits finish after any ending.
@@ -61,25 +64,28 @@ Lords of the Fallen:
   # Replaces vanilla traversal-key pickups and puts all mapped keys in the
   # multiworld. This exercises the most version-sensitive suppression hook.
   # False leaves vanilla keys untouched and removes their AP route requirements;
-  # it is strongly recommended for a first seed and after every game update.
-  shuffle_key_items: false
+  # Disable only when validating a newly released game build or when you want
+  # the original key placements instead of the full randomizer experience.
+  shuffle_key_items: true
 
   # Replaces mapped quest-object pickups and puts those objects in the item pool.
   # Although their AP check locations are filler-only, changing NPC/ending state
-  # can still invalidate the underlying vanilla quest. Keep false unless the
-  # group accepts experimental quest behavior and uses fresh, backed-up saves.
-  shuffle_quest_items: false
+  # can still invalidate the underlying vanilla quest. This is enabled for the
+  # intended full randomizer experience; use fresh, backed-up saves and disable
+  # it if the group prefers vanilla quest-object placement.
+  shuffle_quest_items: true
 
-  # When key shuffling is on, keep the four traversal requirements assigned to
-  # this LotF player's own world. Optional keys may still cross worlds because
-  # they do not gate AP logic. Disable only if the group deliberately wants
-  # fully cross-world progression-key hunting.
-  local_key_items: true
+  # When key shuffling is on, keep every traversal-key requirement assigned to
+  # this LotF player's own world. Disable this to permit those keys to be sent
+  # between games like other advancement items in a multiworld. The default is
+  # false so a multiworld can create genuine cross-game progression chains.
+  local_key_items: false
 
   # Request an early local Pilgrim's Perch Key when keys are shuffled. This is
   # useful for opening the purchased-key route without waiting on distant games.
-  # It has no effect while shuffle_key_items is false.
-  early_pilgrims_perch_key: true
+  # It has no effect while shuffle_key_items is false. Leave false for normal
+  # sphere-based placement and enable only when the group wants this guarantee.
+  early_pilgrims_perch_key: false
 
   # Request an early local Fief Key when keys are shuffled. Enable if early Fief
   # access is preferred; leave false for more routing variety. It has no effect
@@ -92,25 +98,51 @@ Lords of the Fallen:
   # remain protected and can contain filler only.
   remembrance_items: true
 
-  # Number of Deralium bundles mixed into the pool, from 0 through 30. Bundles
-  # cycle through small fragments, regular nuggets, large shards, and chunks.
-  # Higher values make weapon upgrades easier but displace vigor filler.
-  weapon_upgrade_items: 8
+  # Number of Deralium material deliveries mixed into the pool, from 0 through
+  # 30. The full default reproduces one normal weapon's vanilla +0-to-+10 cost:
+  # 6 Small Fragments (two deliveries of 3), 7 Regular Nuggets, 20 Large Shards,
+  # and 1 Chunk. Lower values take the early tiers first and displace less
+  # filler; the Chunk is included only at 30.
+  weapon_upgrade_items: 30
 
-  # Number of Saintly Quintessences in the pool, from 0 through 20. These improve
-  # Sanguinarix healing after delivery and remain useful rather than advancement.
-  sanguinarix_upgrade_items: 5
+  # Number of Saintly Quintessences in the pool, from 0 through 20. The default
+  # 20 matches the vanilla total needed for all Sanguinarix upgrades. These
+  # remain useful rather than advancement.
+  sanguinarix_upgrade_items: 20
 
-  # Number of Antediluvian Chisels in the pool, from 0 through 3. Chisels improve
-  # the Umbral Lamp but are never required by region logic or either goal.
-  lamp_upgrade_items: 2
+  # Number of Antediluvian Chisels in the pool, from 0 through 3. The default 3
+  # matches the vanilla full-lamp total. Chisels are never required by region
+  # logic or either goal.
+  lamp_upgrade_items: 3
 
-  # Treatment of all unsafe checks (NPC quests, quest objects, missables,
-  # ending-exclusive bosses, and any future faction/Crucible source):
+  # Controls how Vigor Skull values follow the generated route:
+  # - off: skull tiers remain fully randomized.
+  # - semi: early checks favor smaller skulls and late checks favor larger
+  #   skulls, with nearby portions of the curve shuffled for more variety.
+  # - full: skulls are arranged as strongly as possible from Enervated and
+  #   Faint early to Seething and Replete late. Logical spheres are considered
+  #   first, followed by the approximate base-game area order within a sphere.
+  # Smoothing can also follow this player's items into another player's world.
+  vigor_skull_smoothing: off
+
+  # Controls where the four Deralium tiers are placed:
+  # - off: weapon-upgrade materials remain fully randomized.
+  # - semi: the overall Small-to-Chunk curve is retained, but nearby portions
+  #   are shuffled so occasional higher or lower materials appear sooner/later.
+  # - full: Small Fragments are earliest, followed by Regular Nuggets, Large
+  #   Shards, and finally Deralium Chunks wherever reachable placements allow.
+  # This changes placement only, not weapon_upgrade_items or delivered amounts.
+  weapon_upgrade_smoothing: off
+
+  # Treatment of additional unsafe checks (NPC quests, quest objects,
+  # missables, ending-exclusive bosses, and any future faction/Crucible
+  # source):
   # - forbid_progression: keep the check but permit filler only (recommended).
   # - remove: omit the check entirely.
   # There is intentionally no "allow" value. Code-level rules always reject
-  # advancement and useful items at unsafe locations.
+  # advancement and useful items at unsafe locations. The 597 fixed physical
+  # pickup checks are never removed; unsafe rows within that set stay
+  # filler-only so every pickup interaction still reports a randomized check.
   missable_location_behavior: forbid_progression
 
   # DeathLink mode:

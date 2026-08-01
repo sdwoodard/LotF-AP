@@ -2,7 +2,9 @@
 
 ## Before playing
 
-Install Archipelago 0.6.7 or newer and RE-UE4SS 3.x. Keep the game offline and
+Install Archipelago 0.6.7 or newer and the basic
+[RE-UE4SS 3.0.1 package](https://github.com/UE4SS-RE/RE-UE4SS/releases/download/v3.0.1/UE4SS_v3.0.1.zip).
+RE-UE4SS is the separate Unreal mod loader used by the game bridge. Keep the game offline and
 disable Easy Anti-Cheat for every modded session. Never enter matchmaking,
 co-op, or invasions while the mod is installed.
 
@@ -13,15 +15,30 @@ Back up the save directory and use a new character for each seed:
 
 ## Windows installation
 
-1. Extract the release's `-win64.zip` file.
-2. Install UE4SS into the game's `LOTF2\Binaries\Win64` directory.
-3. Run `Install-LotFArchipelago.ps1 -GamePath "<game folder>"` in PowerShell.
-4. In Archipelago Launcher, choose **Install APWorld** and select
-   `lotf.apworld`.
+1. In Steam, right-click the game and choose **Manage > Browse local files**.
+   The folder Steam opens, containing `LOTF2.exe`, is the game folder.
+2. Extract the *contents* of `UE4SS_v3.0.1.zip` directly into the game's
+   `LOTF2\Binaries\Win64` folder. `dwmapi.dll`, `UE4SS.dll`, and `Mods` must be
+   directly inside `Win64`, not inside another nested folder.
+3. Download the release's `-win64.zip` and Windows Installer ZIP. Extract only
+   the small Installer ZIP, then double-click `Install-LotFArchipelago.cmd`.
+   Select the untouched `-win64.zip` and the game folder when asked. The `.cmd`
+   wrapper works even when normal PowerShell script execution is disabled. It
+   installs from a temporary extraction, cleans that extraction, and leaves the
+   APWorld, YAML, documentation, and start/uninstall tools beside the installer.
+4. In Archipelago Launcher, choose **Install APWorld** and select the
+   `lotf.apworld` beside the installer.
 5. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players`
    directory, and generate locally.
-6. Open **Lords of the Fallen Client**, connect to the room, and start the game
-   with `Start-LotF-AP.ps1 -GamePath "<game folder>"`.
+6. Put Steam in Offline Mode but leave it running on an account that owns the
+   full game. Open **Lords of the Fallen Client**, connect to the room, then
+   double-click `Start-LotF-AP.cmd` and select the game folder.
+
+The guided launcher supplies full-game Steam AppID `1501750` and disables the
+anti-cheat path. Always use it for modded play. If Friend's Pass is shown,
+close the game, verify full-game ownership/files in Steam, start the unmodded
+game online once, return to Offline Mode, and retry. Do not create
+`steam_appid.txt`.
 
 ## Linux/Proton installation
 
@@ -62,8 +79,9 @@ before continuing, and run `/resync` if the client requests it.
 Run `/bridge` to see the
 package and pickup-safety status. Run `/logic` (or `/inlogic`) for a
 region-prefixed list of unchecked locations currently reachable with received
-items. The description states where the check is, not what its randomized item
-does.
+items. Results are paged; use `/logic 2` for page two or an area prefix such as
+`/logic AR` to filter. The description states where the check is, not what its
+randomized item does.
 
 Soulflay boss remembrance stigmas to report boss checks. `any_ending` completes
 after any credits sequence. `all_bosses` uses only the audited encounters that
@@ -81,7 +99,7 @@ If automatic save selection is ambiguous, run `/save_slot <0-99>`, then
 bindings intentionally block recovery.
 
 Run `/diagnostics` and create a bundle with
-`New-LotFDiagnosticBundle.ps1` (Windows) or
+`New-LotFDiagnosticBundle.cmd` (Windows) or
 `new-lotf-diagnostic-bundle.sh` (Linux). Include a problem description,
 approximate time, generated multiworld, and player YAML when safe. The bundle
 does not include saves or server passwords.
