@@ -1,0 +1,163 @@
+# Lords of the Fallen (2023) Archipelago player options
+#
+# This is a complete, conservative starter file. YAML uses spaces for
+# indentation; do not use tabs. Text after a # is a comment and may be changed
+# or removed without affecting generation. Boolean options use true/false.
+# Choice options use the lowercase values listed in their nearby comments.
+
+# This is the name shown to every player in the multiworld. It must be unique
+# within the room. Keep it reasonably short because it appears in item messages.
+name: Lampbearer
+
+# A private note for seed organizers. Archipelago does not use this to generate
+# the world, so it is safe to replace or remove this text.
+description: Default Lords of the Fallen Template
+
+# Do not change this spelling; it selects the installed APWorld.
+game: Lords of the Fallen
+
+# Generation should fail clearly instead of using an older Archipelago build
+# whose client/APWorld interfaces have not been tested by this project.
+requires:
+  version: 0.6.7
+
+Lords of the Fallen:
+  # Controls how strongly Archipelago tries to distribute important items into
+  # earlier spheres. 0 disables balancing, 50 is the community-standard normal
+  # value, and values approaching 99 increasingly front-load progression. Very
+  # high values reduce seed variety and do not guarantee a particular key early.
+  progression_balancing: 50
+
+  # Determines what the generator guarantees can be collected before goal.
+  # - items: every advancement item can be reached (recommended).
+  # - minimal: only enough advancement to complete the selected goal is assured.
+  # - full: every location must remain reachable; this is the most restrictive.
+  # "items" is safest while location coverage and logic are still developing.
+  accessibility: items
+
+  # Victory condition. Supported values:
+  # - any_ending: complete the slot when the credits finish after any ending.
+  #   Your beacon and quest choices decide which ending; the seed does not.
+  # - all_bosses: soulflay the remembrance stigmas for Pieta, Congregator,
+  #   Hushed Saint, Spurned Progeny, Hollow Crow, Unbroken Promise,
+  #   Tancred/Reinhold, Judge Cleric, Lightreaper, and Sundered Monarch. Adyr
+  #   and Elianne are excluded because they are ending-exclusive. NPC-quest
+  #   bosses are excluded because they can be locked out in one playthrough.
+  goal: any_ending
+
+  # Adds unique quest-object pickups as Archipelago checks. Every such check is
+  # hard-coded filler-only: neither advancement nor useful items can be placed
+  # there, even when the quest seems safe, because NPC state and ending choices
+  # can make quest objects inaccessible. Disable this for a smaller, cleaner
+  # location pool; enabling it is safe for progression but may leave unchecked
+  # filler locations after a failed quest.
+  include_quest_locations: true
+
+  # Adds one curated, non-boss Umbral stigma per represented area. These are
+  # exploration checks and require entering Umbral and soulflaying the stigma.
+  # Leave enabled for more checks; disable for a shorter, boss/key-focused seed.
+  include_world_stigmas: true
+
+  # Replaces vanilla traversal-key pickups and puts all mapped keys in the
+  # multiworld. This exercises the most version-sensitive suppression hook.
+  # False leaves vanilla keys untouched and removes their AP route requirements;
+  # it is strongly recommended for a first seed and after every game update.
+  shuffle_key_items: false
+
+  # Replaces mapped quest-object pickups and puts those objects in the item pool.
+  # Although their AP check locations are filler-only, changing NPC/ending state
+  # can still invalidate the underlying vanilla quest. Keep false unless the
+  # group accepts experimental quest behavior and uses fresh, backed-up saves.
+  shuffle_quest_items: false
+
+  # When key shuffling is on, keep the four traversal requirements assigned to
+  # this LotF player's own world. Optional keys may still cross worlds because
+  # they do not gate AP logic. Disable only if the group deliberately wants
+  # fully cross-world progression-key hunting.
+  local_key_items: true
+
+  # Request an early local Pilgrim's Perch Key when keys are shuffled. This is
+  # useful for opening the purchased-key route without waiting on distant games.
+  # It has no effect while shuffle_key_items is false.
+  early_pilgrims_perch_key: true
+
+  # Request an early local Fief Key when keys are shuffled. Enable if early Fief
+  # access is preferred; leave false for more routing variety. It has no effect
+  # while shuffle_key_items is false.
+  early_fief_key: false
+
+  # Adds mapped major-boss remembrances as useful items. These do not unlock AP
+  # regions and are not advancement, but they provide build and boss-gear value.
+  # Ending-exclusive remembrances can still appear as items; their source checks
+  # remain protected and can contain filler only.
+  remembrance_items: true
+
+  # Number of Deralium bundles mixed into the pool, from 0 through 30. Bundles
+  # cycle through small fragments, regular nuggets, large shards, and chunks.
+  # Higher values make weapon upgrades easier but displace vigor filler.
+  weapon_upgrade_items: 8
+
+  # Number of Saintly Quintessences in the pool, from 0 through 20. These improve
+  # Sanguinarix healing after delivery and remain useful rather than advancement.
+  sanguinarix_upgrade_items: 5
+
+  # Number of Antediluvian Chisels in the pool, from 0 through 3. Chisels improve
+  # the Umbral Lamp but are never required by region logic or either goal.
+  lamp_upgrade_items: 2
+
+  # Treatment of all unsafe checks (NPC quests, quest objects, missables,
+  # ending-exclusive bosses, and any future faction/Crucible source):
+  # - forbid_progression: keep the check but permit filler only (recommended).
+  # - remove: omit the check entirely.
+  # There is intentionally no "allow" value. Code-level rules always reject
+  # advancement and useful items at unsafe locations.
+  missable_location_behavior: forbid_progression
+
+  # DeathLink mode:
+  # - off: local deaths stay local.
+  # - any_death: qualifying deaths are sent to the multiworld and received
+  #   DeathLinks kill this character. Play offline from the game's own servers.
+  death_link: off
+
+  # Number of local deaths, from 1 through 10, required before one DeathLink is
+  # sent. 1 sends every death; higher values provide an amnesty buffer. This does
+  # not change how received DeathLinks are applied.
+  death_link_amnesty: 1
+
+  # Delay in milliseconds between in-game grants, from 250 through 5000. The
+  # default 1000 is intentionally gentle on inventory/UI processing. Increase it
+  # if rapid multi-item deliveries cause missed popups or instability.
+  item_delivery_delay: 1000
+
+  # Give named items to this player at generation start. Example:
+  # start_inventory:
+  #   Fief Key: 1
+  # Do not precollect a shuffled object merely to repair an already-broken quest;
+  # always begin each seed with a fresh character/save.
+  start_inventory: {}
+
+  # Force named checks to filler-only in addition to the APWorld's hard safety
+  # list. This cannot weaken protection on quest, faction, Crucible, or ending-
+  # exclusive checks. Use exact location names from the generated template.
+  exclude_locations: []
+
+  # Ask the generator to favor useful/advancement items at named safe checks.
+  # Priority does not override a location's access rule or hard safety rule.
+  priority_locations: []
+
+  # Keep the named items in this player's own LotF world. The local_key_items
+  # option above is the convenient way to localize every traversal requirement.
+  local_items: []
+
+  # Require named items to be found in another player's world. Do not list an
+  # item in both local_items and non_local_items, and avoid forcing route keys
+  # remote unless the multiworld group explicitly wants that dependency.
+  non_local_items: []
+
+  # Reveal the recipient/location relationship for these item names when the
+  # room starts. Hints do not move items. Example: ["Fief Key", "Rune of Adyr"]
+  start_hints: []
+
+  # Reveal what is placed at these exact location names when the room starts.
+  # This is helpful for accessibility planning without excluding the check.
+  start_location_hints: []
