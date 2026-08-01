@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-b76e45">
+  <img alt="Version 0.1.1" src="https://img.shields.io/badge/version-0.1.1-b76e45">
   <img alt="Archipelago 0.6.7 or newer" src="https://img.shields.io/badge/Archipelago-0.6.7%2B-6d5dfc">
   <img alt="Windows and Linux through Proton" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%2FProton-4a90a4">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3c9b5f">
 </p>
 
 > [!WARNING]
-> Version 0.1.0 is a development release for Steam build 24429019. Back up
+> Version 0.1.1 is a development release for Steam build 24429019. Back up
 > your saves, use a new character for every seed, disable Easy Anti-Cheat, and
 > keep the game offline. Never use the mod in matchmaking, co-op, or invasions.
 
@@ -39,7 +39,6 @@ hard-coded memory addresses.
 - [Logic and safety](#logic-and-safety)
 - [Crash recovery and diagnostics](#crash-recovery-and-diagnostics)
 - [Build and test](#build-and-test)
-- [Publish version 0.1.0](#publish-version-010)
 - [Scope, support, and license](#scope-support-and-license)
 
 ## What is included
@@ -89,7 +88,7 @@ appropriate platform scripts.
    character for this seed.
 2. Install RE-UE4SS into `LOTF2\Binaries\Win64`. Start the game offline once
    and confirm that UE4SS creates a log, then close the game.
-3. Extract `LotF-Archipelago-0.1.0-win64.zip`. In PowerShell, from the
+3. Extract `LotF-Archipelago-x.y.z-win64.zip`. In PowerShell, from the
    extracted directory, run:
 
    ```powershell
@@ -119,7 +118,7 @@ this project's mod and its `mods.txt` entry; it does not delete game saves.
 
 Archipelago's Linux AppImage cannot currently install custom APWorlds. Use an
 Archipelago 0.6.7+ source checkout, extract
-`LotF-Archipelago-0.1.0-linux.zip`, and run:
+`LotF-Archipelago-x.y.z-linux.zip`, and run:
 
 ```bash
 bash ./install-apworld.sh --archipelago-path "$HOME/src/Archipelago"
@@ -243,9 +242,9 @@ installer/
 The release version is read from `VERSION`. Both build paths produce:
 
 - `lotf.apworld`
-- `LotF-Archipelago-Mod-0.1.0.zip`
-- `LotF-Archipelago-0.1.0-win64.zip`
-- `LotF-Archipelago-0.1.0-linux.zip`
+- `LotF-Archipelago-Mod-x.y.z.zip`
+- `LotF-Archipelago-x.y.z-win64.zip`
+- `LotF-Archipelago-x.y.z-linux.zip`
 - `SHA256SUMS.txt`
 
 Windows:
@@ -288,35 +287,9 @@ See [Development](docs/DEVELOPMENT.md) for unit-test commands and acceptance
 criteria. Runtime hooks still require a clean offline game-process smoke test
 after every game or UE4SS update.
 
-## Publish version 0.1.0
-
-1. Run repository validation, the generation matrix, and an offline smoke
-   test.
-2. Inspect `dist/`, verify `SHA256SUMS.txt`, and test both release archives
-   from clean extraction directories.
-3. Commit the source and generated reports, then push `main`.
-4. Create and push the release tag:
-
-   ```bash
-   git tag -a v0.1.0 -m "Lords of the Fallen Archipelago 0.1.0"
-   git push origin main
-   git push origin v0.1.0
-   ```
-
-5. The **Publish release** workflow verifies the tag against `VERSION`,
-   rebuilds the artifacts, and creates the GitHub release from `dist/`.
-
-For a manual release, choose **Releases > Draft a new release**, select
-`v0.1.0`, use title `Lords of the Fallen Archipelago 0.1.0`, copy the 0.1.0
-section from [CHANGELOG.md](CHANGELOG.md), and upload all five files listed
-above.
-
-Settings that must be entered through GitHub's web interface are ready to copy
-from [Repository settings](.github/REPOSITORY_SETTINGS.md).
-
 ## Scope, support, and license
 
-Version 0.1.0 uses unique inventory assets as checks. It does not randomize
+This version uses unique inventory assets as checks. It does not randomize
 enemy placement, entrances, ordinary duplicate consumables, generic equipment
 pickups, or online play.
 

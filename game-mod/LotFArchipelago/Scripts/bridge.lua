@@ -2,7 +2,7 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.1.0",
+    version = "0.1.1",
     protocol_version = 3,
     session = nil,
     ready = false,
