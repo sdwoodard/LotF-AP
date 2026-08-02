@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.3 - 2026-08-02
+
+- Fix the repeatable new-game corridor crash captured in the 0.2.2 diagnostic
+  bundle. The game-thread minidump showed an access violation in UE4SS while
+  the bridge was preparing streamed pickups.
+- Stop traversing the game's mutable `RegisteredPickups` array and stop
+  processing pickup actors from their construction callback. Pickups are now
+  prepared after `PickupSetupFinished`/`Show`, with a bounded `FindAllOf`
+  snapshot for a client attached after the world is already loaded.
+- Stop caching UE4SS `UClass` wrappers across ticks. Item classes are resolved
+  immediately before use so map garbage collection cannot leave the bridge
+  calling through a stale native object.
+- Clear per-world pickup and imported-icon correlations on load and add
+  regression checks that reject the unsafe registry, constructor-callback,
+  and persistent-class-cache paths.
+
 ## 0.2.2 - 2026-08-02
 
 - Discover Blueprint-derived world pickups through the game's reflected

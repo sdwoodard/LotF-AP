@@ -2,7 +2,7 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.2.2",
+    version = "0.2.3",
     protocol_version = 7,
     session = nil,
     ready = false,
@@ -26,6 +26,8 @@ local Bridge = {
     last_death_ms = -5000,
     last_grant_ms = 0,
     last_pickup_scan_ms = -1000,
+    pickup_scan_cursor = 1,
+    pickup_scan_batch = 128,
     last_offline_attempt_ms = -2000,
     offline_notice_emitted = false,
     last_player_name = nil,
@@ -41,13 +43,11 @@ local Bridge = {
     suppression_expires_ms = 0,
     unmapped_pickups = {},
     error_times = {},
-    archipelago_icon = nil,
+    archipelago_icon_path = nil,
     icon_load_attempted = false,
     icon_lookup_depth = 0,
     count_warning_reported = false,
-    pickup_notification_registered = false,
-    pickup_registry_reported = false,
-    asset_classes = {},
+    pickup_scan_reported = false,
     asset_lookup_errors = {},
     asset_catalog_reported = false,
     preserved_pickups = {
@@ -156,6 +156,7 @@ local function reset(session)
     Bridge.preserved_pickups_reported = {}
     Bridge.error_times = {}
     Bridge.last_player_name = nil
+    Bridge.pickup_scan_cursor = 1
 end
 
 local function object_name(value)
@@ -250,20 +251,34 @@ local function find_class(path)
     if not path or path == "" then
         return nil
     end
-    local cached = Bridge.asset_classes[path]
-    if cached and cached:IsValid() then
-        return cached
-    end
 
     local function accept(object)
-        if object and object:IsValid() then
-            Bridge.asset_classes[path] = object
+        if not object then
+            return nil
+        end
+        local valid_ok, valid = pcall(function()
+            return object:IsValid()
+        end)
+        if not valid_ok or not valid then
+            return nil
+        end
+        local class_ok, is_class = pcall(function()
+            return object:IsClass()
+        end)
+        if class_ok and is_class then
             return object
         end
         return nil
     end
 
-    local object = accept(StaticFindObject(path))
+    -- Never retain a RemoteObject/UClass wrapper between ticks. Cooked item
+    -- classes can become unreachable while the game changes maps, and asking
+    -- UE4SS 3.0.1 to validate a stale wrapper can enter freed native memory.
+    -- Resolve a fresh wrapper for each use instead.
+    local find_ok, found = pcall(function()
+        return StaticFindObject(path)
+    end)
+    local object = find_ok and accept(found) or nil
     if object then
         return object
     end
@@ -278,7 +293,10 @@ local function find_class(path)
         if not load_ok then
             table.insert(load_errors, load_path .. ": " .. tostring(loaded))
         end
-        object = accept(StaticFindObject(path))
+        local lookup_ok, lookup = pcall(function()
+            return StaticFindObject(path)
+        end)
+        object = lookup_ok and accept(lookup) or nil
         if object then
             return object
         end
@@ -286,14 +304,7 @@ local function find_class(path)
         -- LoadAsset instead of requiring a follow-up lookup.
         object = accept(loaded)
         if object then
-            local is_class = false
-            pcall(function()
-                is_class = object:IsClass()
-            end)
-            if is_class then
-                return object
-            end
-            Bridge.asset_classes[path] = nil
+            return object
         end
     end
     local short_name = string.match(path, "%.([^%.]+)$")
@@ -527,55 +538,54 @@ local function prepare_pickup(pickup)
 end
 
 local function prepare_loaded_pickups()
-    local ok, subsystem = pcall(function()
-        return FindFirstOf("HexObjectTrackingSubsystem")
+    -- FindAllOf returns a Lua snapshot. Do not traverse the game's mutable
+    -- RegisteredPickups TArray: level streaming can invalidate raw APickup*
+    -- entries while UE4SS is inside its reflected array iterator.
+    local ok, pickups = pcall(function()
+        return FindAllOf("Pickup")
     end)
-    if not ok or not subsystem or not subsystem:IsValid() then
+    if not ok then
+        report_error("Pickup snapshot failed safely: " .. tostring(pickups))
         return 0
     end
-    local array_ok, pickups = pcall(function()
-        return subsystem.RegisteredPickups
-    end)
-    if not array_ok or not pickups then
+    if type(pickups) ~= "table" then
         return 0
     end
-    local count = 0
-    local iterated = pcall(function()
-        pickups:ForEach(function(_index, element)
-            local pickup = unwrap(element)
-            if pickup and object_name(pickup) then
-                count = count + 1
-                pcall(prepare_pickup, pickup)
+    local total = #pickups
+    if total == 0 then
+        Bridge.pickup_scan_cursor = 1
+        return 0
+    end
+    if Bridge.pickup_scan_cursor > total then
+        Bridge.pickup_scan_cursor = 1
+    end
+    local count = math.min(total, Bridge.pickup_scan_batch)
+    for offset = 0, count - 1 do
+        local index = ((Bridge.pickup_scan_cursor + offset - 1) % total) + 1
+        local pickup = pickups[index]
+        if pickup and object_name(pickup) then
+            local prepared, reason = pcall(prepare_pickup, pickup)
+            if not prepared then
+                report_error("Pickup snapshot entry failed safely: " .. tostring(reason))
             end
-        end)
-    end)
-    if not iterated then
-        return 0
+        end
     end
-    if count > 0 and not Bridge.pickup_registry_reported then
-        Bridge.pickup_registry_reported = true
-        log("Pickup registry active with " .. tostring(count) .. " loaded pickups")
+    Bridge.pickup_scan_cursor = ((Bridge.pickup_scan_cursor + count - 1) % total) + 1
+    if not Bridge.pickup_scan_reported then
+        Bridge.pickup_scan_reported = true
+        log("Pickup snapshot active with " .. tostring(total) .. " loaded pickups")
     end
     return count
 end
 
-local function register_pickup_notifications()
-    if Bridge.pickup_notification_registered then
-        return true
+local function prepare_initialized_pickup(context, source)
+    if not Bridge.ready or not Bridge.session then
+        return
     end
-    local ok = pcall(function()
-        NotifyOnNewObject("/Script/LOTF2.Pickup", function(pickup)
-            if Bridge.ready and Bridge.session then
-                pcall(prepare_pickup, pickup)
-            end
-        end)
-    end)
-    if ok then
-        Bridge.pickup_notification_registered = true
-        log("Watching newly streamed pickup actors")
-        return true
+    local ok, reason = pcall(prepare_pickup, context)
+    if not ok then
+        report_error("Pickup preparation from " .. tostring(source) .. " failed safely: " .. tostring(reason))
     end
-    return false
 end
 
 local function observe_pickup(context)
@@ -779,6 +789,15 @@ local function report_loaded(reason, context, ...)
     Bridge.restores = {}
     Bridge.active_recovery = nil
     Bridge.active_cursor = 0
+    -- Object names are stable identifiers; UE4SS wrappers are not. Discard
+    -- per-world correlations before any streamed object can be reused.
+    Bridge.prepared_items = {}
+    Bridge.prepared_pickups = {}
+    Bridge.prepared_pickup_guids = {}
+    Bridge.archipelago_icon_path = nil
+    Bridge.icon_load_attempted = false
+    Bridge.pickup_scan_reported = false
+    Bridge.pickup_scan_cursor = 1
     Protocol.emit(
         "LOADED",
         Bridge.session,
@@ -844,8 +863,18 @@ local function presentation_for_context(context)
 end
 
 local function archipelago_icon()
-    if Bridge.archipelago_icon and Bridge.archipelago_icon:IsValid() then
-        return Bridge.archipelago_icon
+    if Bridge.archipelago_icon_path then
+        local found_ok, found = pcall(function()
+            return StaticFindObject(Bridge.archipelago_icon_path)
+        end)
+        local valid_ok, valid = pcall(function()
+            return found and found:IsValid()
+        end)
+        if found_ok and valid_ok and valid then
+            return found
+        end
+        Bridge.archipelago_icon_path = nil
+        Bridge.icon_load_attempted = false
     end
     if Bridge.icon_load_attempted then
         return nil
@@ -874,7 +903,8 @@ local function archipelago_icon()
         return nil
     end)
     if ok and texture and texture:IsValid() then
-        Bridge.archipelago_icon = texture
+        local full_name = object_name(texture)
+        Bridge.archipelago_icon_path = full_name and (string.match(full_name, "^%S+%s+(.+)$") or full_name) or nil
         log("Loaded the Archipelago item icon")
         return texture
     end
@@ -961,8 +991,13 @@ local function register_presentation_hooks()
 end
 
 local function register_hooks()
-    register_pickup_notifications()
     register_presentation_hooks()
+    register_hook("/Script/LOTF2.Pickup:PickupSetupFinished", function() end, function(context)
+        prepare_initialized_pickup(context, "PickupSetupFinished")
+    end)
+    register_hook("/Script/LOTF2.Pickup:Show", function() end, function(context)
+        prepare_initialized_pickup(context, "Show")
+    end)
     register_hook("/Script/LOTF2.Pickup:TryTakePickup", observe_pickup)
     register_hook("/Script/LOTF2.Pickup:OnTakePickupEndDelegate", observe_pickup_completed)
     register_hook("/Script/LOTF2.InteractionComponent:NotifyOnInteractionActivate", observe_interaction)
@@ -1485,11 +1520,6 @@ function Bridge.tick()
         Bridge.last_hook_attempt_ms = now_ms()
     end
 
-    if now_ms() - Bridge.last_pickup_scan_ms >= 500 then
-        prepare_loaded_pickups()
-        Bridge.last_pickup_scan_ms = now_ms()
-    end
-
     if Bridge.pending_presentation and now_ms() > Bridge.presentation_expires_ms then
         Bridge.pending_presentation = nil
         Bridge.pending_presentation_location = nil
@@ -1508,6 +1538,10 @@ function Bridge.tick()
     if player_name and player_name ~= Bridge.last_player_name then
         Bridge.last_player_name = player_name
         report_loaded("player_ready", player)
+    end
+    if player_name and now_ms() - Bridge.last_pickup_scan_ms >= 2000 then
+        prepare_loaded_pickups()
+        Bridge.last_pickup_scan_ms = now_ms()
     end
 
     if now_ms() - Bridge.last_grant_ms >= Bridge.delivery_delay then

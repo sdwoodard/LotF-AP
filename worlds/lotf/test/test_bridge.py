@@ -135,17 +135,26 @@ class TestLuaPickupContract(TestCase):
         cls.source = bridge_path.read_text(encoding="utf-8")
 
     def test_loaded_pickups_are_prepared_by_guid(self) -> None:
-        self.assertIn('FindFirstOf("HexObjectTrackingSubsystem")', self.source)
-        self.assertIn("RegisteredPickups", self.source)
-        self.assertIn('NotifyOnNewObject("/Script/LOTF2.Pickup"', self.source)
+        self.assertIn('FindAllOf("Pickup")', self.source)
+        self.assertIn("Pickup:PickupSetupFinished", self.source)
+        self.assertIn("Pickup:Show", self.source)
         self.assertIn("Bridge.prepared_items[item_name]", self.source)
         self.assertIn("pickup_identity(pickup)", self.source)
         self.assertIn("B21D92B8406214F0AEAF6B9B239BB661", self.source)
+
+    def test_pickup_discovery_avoids_unstable_ue4ss_object_lifetimes(self) -> None:
+        self.assertNotIn("subsystem.RegisteredPickups", self.source)
+        self.assertNotIn("pickups:ForEach", self.source)
+        self.assertNotIn("NotifyOnNewObject(", self.source)
+        self.assertNotIn("asset_classes", self.source)
+        self.assertNotIn("archipelago_icon = texture", self.source)
+        self.assertIn("pickup_scan_batch = 128", self.source)
 
     def test_item_classes_are_loaded_with_a_short_name_fallback(self) -> None:
         self.assertIn("LoadAsset(load_path)", self.source)
         self.assertIn('FindObject(class_name, short_name)', self.source)
         self.assertIn('"BlueprintGeneratedClass", "Class"', self.source)
+        self.assertIn("Resolve a fresh wrapper for each use instead", self.source)
 
     def test_multiple_observable_pickup_paths_are_registered(self) -> None:
         self.assertIn("Pickup:OnTakePickupEndDelegate", self.source)

@@ -21,8 +21,14 @@ version=$(tr -d '[:space:]' < "$root/VERSION")
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/archipelago.json"
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/world.py"
 grep -Eq "version[[:space:]]*=[[:space:]]*\"$version\"" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
-for pickup_runtime_path in HexObjectTrackingSubsystem RegisteredPickups 'NotifyOnNewObject("/Script/LOTF2.Pickup"' 'LoadAsset(load_path)'; do
+for pickup_runtime_path in 'FindAllOf("Pickup")' Pickup:PickupSetupFinished Pickup:Show 'LoadAsset(load_path)'; do
     grep -Fq "$pickup_runtime_path" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
+done
+for unsafe_pickup_path in subsystem.RegisteredPickups 'pickups:ForEach' 'NotifyOnNewObject(' asset_classes 'archipelago_icon = texture'; do
+    if grep -Fq "$unsafe_pickup_path" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"; then
+        printf 'Lua bridge retains unsafe pickup/object-lifetime path: %s\n' "$unsafe_pickup_path" >&2
+        exit 1
+    fi
 done
 
 required=(

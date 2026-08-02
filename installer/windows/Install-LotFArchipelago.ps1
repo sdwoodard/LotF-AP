@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $script:OutputBox = $null
 $script:ProgressBar = $null
-$script:ClientVersion = '0.2.2'
+$script:ClientVersion = '0.2.3'
 $script:ArchipelagoCompatibility = '0.6.7 or newer'
 $script:ConfigPath = Join-Path $env:LOCALAPPDATA 'LotFArchipelago\install.json'
 

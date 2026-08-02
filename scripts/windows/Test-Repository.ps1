@@ -33,9 +33,14 @@ if ($luaBridge.IndexOf('B21D92B8406214F0AEAF6B9B239BB661', [System.StringCompari
 if ($luaBridge.IndexOf('/Script/LOTF2.Pickup:OnTakePickupEndDelegate', [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Lua bridge is missing the pickup-completion correlation hook.'
 }
-foreach ($pickupRuntimePath in @('HexObjectTrackingSubsystem', 'RegisteredPickups', 'NotifyOnNewObject("/Script/LOTF2.Pickup"', 'LoadAsset(load_path)')) {
+foreach ($pickupRuntimePath in @('FindAllOf("Pickup")', 'Pickup:PickupSetupFinished', 'Pickup:Show', 'LoadAsset(load_path)')) {
     if ($luaBridge.IndexOf($pickupRuntimePath, [System.StringComparison]::Ordinal) -lt 0) {
         throw "Lua bridge is missing required pickup runtime path: $pickupRuntimePath"
+    }
+}
+foreach ($unsafePickupPath in @('subsystem.RegisteredPickups', 'pickups:ForEach', 'NotifyOnNewObject(', 'asset_classes', 'archipelago_icon = texture')) {
+    if ($luaBridge.IndexOf($unsafePickupPath, [System.StringComparison]::Ordinal) -ge 0) {
+        throw "Lua bridge retains unsafe pickup/object-lifetime path: $unsafePickupPath"
     }
 }
 $worldSource = Get-Content -Raw -LiteralPath (Join-Path $root 'worlds\lotf\world.py')
@@ -143,6 +148,7 @@ if ($GamePath) {
         'SaveGameAsync',
         'OnCreditScreenEndedCallback',
         'TryTakePickup',
+        'PickupSetupFinished',
         'OnTakePickupEndDelegate',
         'GetStringId',
         'PrePlacedRandomLootMap'
