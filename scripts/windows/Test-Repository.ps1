@@ -33,6 +33,11 @@ if ($luaBridge.IndexOf('B21D92B8406214F0AEAF6B9B239BB661', [System.StringCompari
 if ($luaBridge.IndexOf('/Script/LOTF2.Pickup:OnTakePickupEndDelegate', [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Lua bridge is missing the pickup-completion correlation hook.'
 }
+foreach ($pickupRuntimePath in @('HexObjectTrackingSubsystem', 'RegisteredPickups', 'NotifyOnNewObject("/Script/LOTF2.Pickup"', 'LoadAsset(load_path)')) {
+    if ($luaBridge.IndexOf($pickupRuntimePath, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "Lua bridge is missing required pickup runtime path: $pickupRuntimePath"
+    }
+}
 $worldSource = Get-Content -Raw -LiteralPath (Join-Path $root 'worlds\lotf\world.py')
 $slotVersion = [regex]::Match($worldSource, '"world_version":\s*"([^"]+)"').Groups[1].Value
 if ($slotVersion -ne $version) {
@@ -78,6 +83,10 @@ foreach ($control in @('System.Windows.Forms.Form', 'System.Windows.Forms.Progre
 if ($installerSource.IndexOf("ReadOnly = `$true", [System.StringComparison]::Ordinal) -lt 0 -or
     $installerSource.IndexOf('install.json', [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Windows installer must provide read-only output and save install.json.'
+}
+if ($installerSource.IndexOf('ReleaseZip', [System.StringComparison]::Ordinal) -ge 0 -or
+    $installerSource.IndexOf('game-mod\LotFArchipelago', [System.StringComparison]::Ordinal) -lt 0) {
+    throw 'Windows installer must use the extracted release files beside itself without a package picker.'
 }
 $launcherSource = Get-Content -Raw -LiteralPath (Join-Path $root 'installer\windows\Start-LotF-AP.ps1')
 foreach ($offlineSetting in @('-NoEAC', '-Offline', '-NoRedpointEOS', '-NoOnlineSubsystemRedpointEOS', "SteamAppId = '1501750'")) {

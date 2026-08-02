@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.2.1" src="https://img.shields.io/badge/version-0.2.1-b76e45">
+  <img alt="Version 0.2.2" src="https://img.shields.io/badge/version-0.2.2-b76e45">
   <img alt="Archipelago 0.6.7 or newer" src="https://img.shields.io/badge/Archipelago-0.6.7%2B-6d5dfc">
   <img alt="Windows and Linux through Proton" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%2FProton-4a90a4">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3c9b5f">
@@ -81,7 +81,6 @@ do not use a source-code, `zDEV`, or experimental archive.
    double-click **`Install-LotFArchipelago.cmd`**.
 5. In the installer window:
 
-   - select the downloaded `LotF-Archipelago-x.y.z-win64.zip`;
    - select the Steam game folder from step 2; and
    - choose **Install** and wait for the progress bar to reach 100%.
 

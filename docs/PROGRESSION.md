@@ -1,6 +1,6 @@
 # Progression and location-safety policy
 
-Version 0.2.1 classifies an item as Archipelago advancement only when it
+Version 0.2.2 classifies an item as Archipelago advancement only when it
 unlocks at least one generated check. This includes both region entrances and
 individual quest-reward checks. Being rare, useful for a build, or able to
 expand a merchant inventory is not sufficient by itself.
@@ -39,7 +39,7 @@ check.
 ## Audited pickup logic
 
 The retail `DA_PrePlacedRandomLootMap` supplies 597 eligible persistent pickup
-GUIDs. The 0.2.1 audit resolves every GUID against the cooked gameplay maps in
+GUIDs. The 0.2.2 audit resolves every GUID against the cooked gameplay maps in
 Steam build 24429019: 597 of 597 resolved across 141 sublevels, with one
 reviewed level-instance reference appearing in two Bramis Castle maps. The
 checked-in `pickup_sublevels.py` is the reproducible evidence table.
@@ -116,7 +116,7 @@ rejected if Victory or an advancement item is stranded.
 ## Deliberately not advancement
 
 All other mapped quest objects and service unlocks are useful at most because
-none unlock another check in the 0.2.1 location table:
+none unlock another check in the 0.2.2 location table:
 
 - Dunmire objects do not gate AP logic because Dunmire moves and eventually
   dies during his quest.

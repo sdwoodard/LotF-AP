@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.2 - 2026-08-02
+
+- Discover Blueprint-derived world pickups through the game's reflected
+  pickup registry and watch newly streamed pickup actors. The previous exact
+  native-class scan found no retail pickup actors, so 0.2.1 left vanilla loot
+  in place and reported no checks.
+- Prepare curated key and quest pickups such as Flayed Skin through their item
+  marker when the actor is not represented by the pre-placed random-loot map.
+- Add resilient generated-class lookup after loading an item package so pickup
+  suppression, received-item delivery, recovery audits, and same-game icons
+  can resolve retail item assets across supported UE4SS lookup behaviors.
+- Remove the redundant release-package picker from the Windows installer. The
+  installer now uses the mod and APWorld files beside itself in the extracted
+  release and asks only for the Steam game folder.
+- Advance the client/game bridge protocol to v7 so mixed 0.2.1/final 0.2.2
+  files—and the intermediate runtime-test build—fail closed instead of
+  silently running incompatible code.
+
 ## 0.2.1 - 2026-08-02
 
 - Prepare loaded physical pickups by their persistent retail GUID before the

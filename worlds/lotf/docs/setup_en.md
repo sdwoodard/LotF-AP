@@ -22,8 +22,9 @@ Back up the save directory and use a new character for each seed:
    directly inside `Win64`, not inside another nested folder.
 3. Download the release's `LotF-Archipelago-x.y.z-win64.zip`, choose
    **Extract All**, and double-click `Install-LotFArchipelago.cmd` in the
-   extracted folder. In the installer window, select the downloaded ZIP and
-   the game folder, then choose **Install**.
+   extracted folder. In the installer window, select the game folder, then
+   choose **Install**. The installer uses the release files in that extracted
+   folder automatically.
 4. In Archipelago Launcher, choose **Install APWorld** and select the
    `lotf.apworld` beside the installer.
 5. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players`

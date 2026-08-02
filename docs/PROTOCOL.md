@@ -1,4 +1,4 @@
-# Game bridge protocol v5
+# Game bridge protocol v7
 
 All fields are percent-encoded UTF-8-compatible ASCII. Records end in LF.
 Every command after `RESET` and every event begins with the current session.

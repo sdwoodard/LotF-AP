@@ -46,7 +46,7 @@ pickup and delivering its `LocationChecks` packet.
 Received-item recovery uses a stronger save checkpoint:
 
 1. The client fingerprints the active primary `SaveNN.sav` with SHA-256.
-2. At each game save, protocol v5 records the receive cursor and measured count
+2. At each game save, protocol v7 records the receive cursor and measured count
    of every mapped item beside that fingerprint using an atomic JSON update.
 3. On load, the client adds only receipts after that checkpoint cursor to its
    recorded baseline and compares the result with the inventory now loaded.
@@ -65,11 +65,13 @@ locations and received-item history.
 ## Why pickup GUIDs and asset markers
 
 The retail `DA_PrePlacedRandomLootMap` assigns an FGuid to every physical actor
-the game itself considers eligible for pre-placed loot. Protocol v4 maps those
-identities to 597 checks. The bridge reads the pickup's reflected
-`LOTF2SerializationComponent.GetStringId()` at `Pickup.TryTakePickup`, replaces
-the pending inventory object before its vanilla item can enter inventory, then
-durably emits the check. The tutorial Throwing Stone row is omitted.
+the game itself considers eligible for pre-placed loot. Protocol v7 maps those
+identities to 597 checks. The bridge enumerates Blueprint-derived actors from
+`HexObjectTrackingSubsystem.RegisteredPickups`, watches new derived pickup
+objects as levels stream, and reads each pickup's reflected
+`LOTF2SerializationComponent.GetStringId()`. It replaces the pending inventory
+object before its vanilla item can enter inventory, then durably emits the
+check. The tutorial Throwing Stone row is omitted.
 
 Unique keys, quest objects, and stigmas additionally use cooked `UItemData`
 markers. Both GUIDs and class paths survive ASLR and ordinary code-layout

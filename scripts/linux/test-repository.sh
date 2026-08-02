@@ -21,6 +21,9 @@ version=$(tr -d '[:space:]' < "$root/VERSION")
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/archipelago.json"
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/world.py"
 grep -Eq "version[[:space:]]*=[[:space:]]*\"$version\"" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
+for pickup_runtime_path in HexObjectTrackingSubsystem RegisteredPickups 'NotifyOnNewObject("/Script/LOTF2.Pickup"' 'LoadAsset(load_path)'; do
+    grep -Fq "$pickup_runtime_path" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
+done
 
 required=(
     worlds/lotf/__init__.py
@@ -48,6 +51,11 @@ if grep -Fqi 'Windows-Installer' "$root/scripts/windows/Build-Release.ps1"; then
     printf 'The separate Windows installer archive must not be built.\n' >&2
     exit 1
 fi
+if grep -Fq 'ReleaseZip' "$root/installer/windows/Install-LotFArchipelago.ps1"; then
+    printf 'The Windows installer must not ask for a release package.\n' >&2
+    exit 1
+fi
+grep -Fq 'game-mod\LotFArchipelago' "$root/installer/windows/Install-LotFArchipelago.ps1"
 for offline_setting in -NoEAC -Offline -NoRedpointEOS -NoOnlineSubsystemRedpointEOS; do
     grep -Fq -- "$offline_setting" "$root/installer/windows/Start-LotF-AP.ps1"
     grep -Fq -- "$offline_setting" "$root/installer/linux/start-lotf-ap.sh"

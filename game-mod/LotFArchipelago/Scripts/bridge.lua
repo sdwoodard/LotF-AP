@@ -2,8 +2,8 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.2.1",
-    protocol_version = 5,
+    version = "0.2.2",
+    protocol_version = 7,
     session = nil,
     ready = false,
     markers = {},
@@ -45,6 +45,11 @@ local Bridge = {
     icon_load_attempted = false,
     icon_lookup_depth = 0,
     count_warning_reported = false,
+    pickup_notification_registered = false,
+    pickup_registry_reported = false,
+    asset_classes = {},
+    asset_lookup_errors = {},
+    asset_catalog_reported = false,
     preserved_pickups = {
         -- Defiled Sepulchre tutorial Throwing Stone. This must remain vanilla
         -- so the player can knock down hanging corpses before or without a
@@ -242,18 +247,73 @@ local function marker_for_value(value)
 end
 
 local function find_class(path)
-    local object = StaticFindObject(path)
-    if object and object:IsValid() then
+    if not path or path == "" then
+        return nil
+    end
+    local cached = Bridge.asset_classes[path]
+    if cached and cached:IsValid() then
+        return cached
+    end
+
+    local function accept(object)
+        if object and object:IsValid() then
+            Bridge.asset_classes[path] = object
+            return object
+        end
+        return nil
+    end
+
+    local object = accept(StaticFindObject(path))
+    if object then
         return object
     end
+
     local package_path = string.gsub(path, "%.[^%.]+_C$", "")
-    pcall(function()
-        LoadAsset(package_path)
-    end)
-    object = StaticFindObject(path)
-    if object and object:IsValid() then
-        return object
+    local package_leaf = string.match(package_path, "/([^/]+)$")
+    local load_errors = {}
+    for _, load_path in ipairs({package_path .. "." .. tostring(package_leaf), package_path, path}) do
+        local load_ok, loaded = pcall(function()
+            return LoadAsset(load_path)
+        end)
+        if not load_ok then
+            table.insert(load_errors, load_path .. ": " .. tostring(loaded))
+        end
+        object = accept(StaticFindObject(path))
+        if object then
+            return object
+        end
+        -- Some UE4SS builds return the generated class directly from
+        -- LoadAsset instead of requiring a follow-up lookup.
+        object = accept(loaded)
+        if object then
+            local is_class = false
+            pcall(function()
+                is_class = object:IsClass()
+            end)
+            if is_class then
+                return object
+            end
+            Bridge.asset_classes[path] = nil
+        end
     end
+    local short_name = string.match(path, "%.([^%.]+)$")
+    if short_name then
+        for _, class_name in ipairs({"BlueprintGeneratedClass", "Class"}) do
+            local found_ok, found = pcall(function()
+                return FindObject(class_name, short_name)
+            end)
+            if not found_ok then
+                table.insert(load_errors, class_name .. ": " .. tostring(found))
+            end
+            if found_ok then
+                object = accept(found)
+                if object then
+                    return object
+                end
+            end
+        end
+    end
+    Bridge.asset_lookup_errors[path] = table.concat(load_errors, " | ")
     return nil
 end
 
@@ -266,6 +326,34 @@ local function suppress_parameter(parameter)
         parameter:set(replacement)
     end)
     return ok
+end
+
+local function validate_item_assets()
+    local missing = {}
+    local count = 0
+    local replacement = find_class(Bridge.replacement_asset)
+    if not replacement then
+        table.insert(missing, "pickup replacement")
+    end
+    for item_id, row in pairs(Bridge.items) do
+        count = count + 1
+        if not find_class(row.asset) then
+            if #missing < 8 then
+                table.insert(missing, tostring(item_id) .. " (" .. tostring(row.name) .. ")")
+            end
+        end
+    end
+    if #missing > 0 then
+        local detail = Bridge.asset_lookup_errors[Bridge.replacement_asset]
+        local suffix = detail and detail ~= "" and ("; lookup detail: " .. detail) or ""
+        report_error("Could not resolve required retail item classes: " .. table.concat(missing, ", ") .. suffix)
+        return false
+    end
+    if not Bridge.asset_catalog_reported then
+        Bridge.asset_catalog_reported = true
+        log("Resolved pickup replacement and " .. tostring(count) .. " Archipelago item classes")
+    end
+    return true
 end
 
 local function suppress_data_parameter(parameter)
@@ -395,12 +483,17 @@ local function prepare_pickup(pickup)
         return nil, nil, nil
     end
     local guid = pickup_identity(pickup)
-    if not guid or Bridge.preserved_pickups[guid] then
+    if guid and Bridge.preserved_pickups[guid] then
         return guid, nil, nil
     end
-    local row = Bridge.pickup_guids[guid]
+    local row = guid and Bridge.pickup_guids[guid] or nil
+    local marker = nil
+    local inventory_item = pickup_inventory_item(pickup)
+    if not row and inventory_item then
+        marker, row = marker_for_value(inventory_item)
+    end
     if not row then
-        if not Bridge.unmapped_pickups[guid] then
+        if guid and not Bridge.unmapped_pickups[guid] then
             Bridge.unmapped_pickups[guid] = true
             log("Observed unmapped pickup GUID " .. guid)
         end
@@ -409,36 +502,80 @@ local function prepare_pickup(pickup)
 
     local pickup_name = object_name(pickup)
     Bridge.prepared_pickups[pickup_name] = row
-    local inventory_item = pickup_inventory_item(pickup)
     local item_name = object_name(inventory_item)
     if not inventory_item or not item_name then
         return guid, row, nil
     end
     Bridge.prepared_items[item_name] = {
-        marker = "AP_GUID_" .. guid,
+        marker = marker or ("AP_GUID_" .. guid),
         row = row,
     }
-    if row.suppress and Bridge.prepared_pickup_guids[guid] ~= item_name then
+    local preparation_key = guid or pickup_name
+    if row.suppress and Bridge.prepared_pickup_guids[preparation_key] ~= item_name then
         if suppress_inventory_item(inventory_item) then
-            Bridge.prepared_pickup_guids[guid] = item_name
-            log("Prepared randomized pickup GUID " .. guid .. " (" .. tostring(row.retail_row) .. ")")
+            Bridge.prepared_pickup_guids[preparation_key] = item_name
+            if marker then
+                log("Prepared randomized pickup marker " .. marker)
+            else
+                log("Prepared randomized pickup GUID " .. guid .. " (" .. tostring(row.retail_row) .. ")")
+            end
         else
-            report_error("Could not prepare randomized pickup GUID " .. guid)
+            report_error("Could not prepare randomized pickup " .. tostring(marker or guid))
         end
     end
     return guid, row, inventory_item
 end
 
 local function prepare_loaded_pickups()
-    local ok, pickups = pcall(function()
-        return FindAllOf("Pickup")
+    local ok, subsystem = pcall(function()
+        return FindFirstOf("HexObjectTrackingSubsystem")
     end)
-    if not ok or not pickups then
-        return
+    if not ok or not subsystem or not subsystem:IsValid() then
+        return 0
     end
-    for _, pickup in ipairs(pickups) do
-        pcall(prepare_pickup, pickup)
+    local array_ok, pickups = pcall(function()
+        return subsystem.RegisteredPickups
+    end)
+    if not array_ok or not pickups then
+        return 0
     end
+    local count = 0
+    local iterated = pcall(function()
+        pickups:ForEach(function(_index, element)
+            local pickup = unwrap(element)
+            if pickup and object_name(pickup) then
+                count = count + 1
+                pcall(prepare_pickup, pickup)
+            end
+        end)
+    end)
+    if not iterated then
+        return 0
+    end
+    if count > 0 and not Bridge.pickup_registry_reported then
+        Bridge.pickup_registry_reported = true
+        log("Pickup registry active with " .. tostring(count) .. " loaded pickups")
+    end
+    return count
+end
+
+local function register_pickup_notifications()
+    if Bridge.pickup_notification_registered then
+        return true
+    end
+    local ok = pcall(function()
+        NotifyOnNewObject("/Script/LOTF2.Pickup", function(pickup)
+            if Bridge.ready and Bridge.session then
+                pcall(prepare_pickup, pickup)
+            end
+        end)
+    end)
+    if ok then
+        Bridge.pickup_notification_registered = true
+        log("Watching newly streamed pickup actors")
+        return true
+    end
+    return false
 end
 
 local function observe_pickup(context)
@@ -824,6 +961,7 @@ local function register_presentation_hooks()
 end
 
 local function register_hooks()
+    register_pickup_notifications()
     register_presentation_hooks()
     register_hook("/Script/LOTF2.Pickup:TryTakePickup", observe_pickup)
     register_hook("/Script/LOTF2.Pickup:OnTakePickupEndDelegate", observe_pickup_completed)
@@ -1266,6 +1404,9 @@ local function process_record(fields)
         Bridge.delivery_delay = tonumber(fields[4]) or 1000
         Bridge.goal = tonumber(fields[5]) or 0
     elseif verb == "READY" then
+        if not validate_item_assets() then
+            return
+        end
         Bridge.ready = true
         Protocol.emit("HELLO", Bridge.session, Bridge.version, Bridge.protocol_version, Bridge.boot_id)
         for _, location in ipairs(State.checked_for_session(Bridge.session)) do
