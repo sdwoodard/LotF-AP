@@ -2,7 +2,7 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.2.3",
+    version = "0.2.4",
     protocol_version = 7,
     session = nil,
     ready = false,
@@ -25,9 +25,7 @@ local Bridge = {
     last_hook_attempt_ms = -2000,
     last_death_ms = -5000,
     last_grant_ms = 0,
-    last_pickup_scan_ms = -1000,
-    pickup_scan_cursor = 1,
-    pickup_scan_batch = 128,
+    last_player_scan_ms = -1000,
     last_offline_attempt_ms = -2000,
     offline_notice_emitted = false,
     last_player_name = nil,
@@ -47,7 +45,6 @@ local Bridge = {
     icon_load_attempted = false,
     icon_lookup_depth = 0,
     count_warning_reported = false,
-    pickup_scan_reported = false,
     asset_lookup_errors = {},
     asset_catalog_reported = false,
     preserved_pickups = {
@@ -156,7 +153,6 @@ local function reset(session)
     Bridge.preserved_pickups_reported = {}
     Bridge.error_times = {}
     Bridge.last_player_name = nil
-    Bridge.pickup_scan_cursor = 1
 end
 
 local function object_name(value)
@@ -537,47 +533,6 @@ local function prepare_pickup(pickup)
     return guid, row, inventory_item
 end
 
-local function prepare_loaded_pickups()
-    -- FindAllOf returns a Lua snapshot. Do not traverse the game's mutable
-    -- RegisteredPickups TArray: level streaming can invalidate raw APickup*
-    -- entries while UE4SS is inside its reflected array iterator.
-    local ok, pickups = pcall(function()
-        return FindAllOf("Pickup")
-    end)
-    if not ok then
-        report_error("Pickup snapshot failed safely: " .. tostring(pickups))
-        return 0
-    end
-    if type(pickups) ~= "table" then
-        return 0
-    end
-    local total = #pickups
-    if total == 0 then
-        Bridge.pickup_scan_cursor = 1
-        return 0
-    end
-    if Bridge.pickup_scan_cursor > total then
-        Bridge.pickup_scan_cursor = 1
-    end
-    local count = math.min(total, Bridge.pickup_scan_batch)
-    for offset = 0, count - 1 do
-        local index = ((Bridge.pickup_scan_cursor + offset - 1) % total) + 1
-        local pickup = pickups[index]
-        if pickup and object_name(pickup) then
-            local prepared, reason = pcall(prepare_pickup, pickup)
-            if not prepared then
-                report_error("Pickup snapshot entry failed safely: " .. tostring(reason))
-            end
-        end
-    end
-    Bridge.pickup_scan_cursor = ((Bridge.pickup_scan_cursor + count - 1) % total) + 1
-    if not Bridge.pickup_scan_reported then
-        Bridge.pickup_scan_reported = true
-        log("Pickup snapshot active with " .. tostring(total) .. " loaded pickups")
-    end
-    return count
-end
-
 local function prepare_initialized_pickup(context, source)
     if not Bridge.ready or not Bridge.session then
         return
@@ -796,8 +751,6 @@ local function report_loaded(reason, context, ...)
     Bridge.prepared_pickup_guids = {}
     Bridge.archipelago_icon_path = nil
     Bridge.icon_load_attempted = false
-    Bridge.pickup_scan_reported = false
-    Bridge.pickup_scan_cursor = 1
     Protocol.emit(
         "LOADED",
         Bridge.session,
@@ -1060,8 +1013,18 @@ local function player_character()
         "HexPlayerCharacter",
     }
     for _, name in ipairs(names) do
-        local player = FindFirstOf(name)
-        if player and player:IsValid() then
+        local find_ok, player = pcall(function()
+            return FindFirstOf(name)
+        end)
+        local valid_ok, valid = pcall(function()
+            return find_ok and player and player:IsValid()
+        end)
+        local player_name = valid_ok and valid and object_name(player) or nil
+        -- FindFirstOf includes subclasses. Character creation uses a
+        -- CustomizationCharacter subclass with no gameplay inventory; treating
+        -- it as the live player starts recovery and asset work during the menu
+        -- transition.
+        if player_name and not string.find(player_name, "CustomizationCharacter", 1, true) then
             return player
         end
     end
@@ -1533,15 +1496,14 @@ function Bridge.tick()
         Bridge.pending_suppression_identity = nil
     end
 
-    local player = player_character()
-    local player_name = object_name(player)
-    if player_name and player_name ~= Bridge.last_player_name then
-        Bridge.last_player_name = player_name
-        report_loaded("player_ready", player)
-    end
-    if player_name and now_ms() - Bridge.last_pickup_scan_ms >= 2000 then
-        prepare_loaded_pickups()
-        Bridge.last_pickup_scan_ms = now_ms()
+    if now_ms() - Bridge.last_player_scan_ms >= 1000 then
+        local player = player_character()
+        local player_name = object_name(player)
+        if player_name and player_name ~= Bridge.last_player_name then
+            Bridge.last_player_name = player_name
+            report_loaded("player_ready", player)
+        end
+        Bridge.last_player_scan_ms = now_ms()
     end
 
     if now_ms() - Bridge.last_grant_ms >= Bridge.delivery_delay then

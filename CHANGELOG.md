@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.4 - 2026-08-02
+
+- Fix intermittent startup and first-corridor crashes by configuring
+  `bUseUObjectArrayCache = false`, the compatibility setting recommended by
+  UE4SS 3.0.1 for its object-construction cache startup crash. Both supplied
+  minidumps resolve to that cache rehashing from `HookedStaticConstructObject`.
+- Preserve the user's prior cache value during installation and restore it on
+  uninstall, including across repeated installs. Linux/Proton receives the
+  same handling as Windows.
+- Remove the recurring global pickup-object scan. Post-initialization hooks and
+  the final `TryTakePickup` pre-hook cover streamed and already-loaded actors
+  without enumerating the global object array.
+- Ignore the character-creation preview pawn during player detection and
+  reduce player searches to once per second, preventing recovery audits from
+  running during the transition into the menu.
+- Include UE4SS settings and installer state in diagnostic bundles.
+- Trim player release archives by omitting developer documentation, the
+  changelog, and the asset-provenance note; these remain in the repository.
+
 ## 0.2.3 - 2026-08-02
 
 - Fix the repeatable new-game corridor crash captured in the 0.2.2 diagnostic

@@ -40,13 +40,13 @@ find "$apworld_stage" -type d -name __pycache__ -prune -exec rm -rf -- {} +
 (cd "$build/apworld" && zip -qr "$dist/lotf.apworld" lotf)
 
 package_stage="$build/package/LotF-Archipelago-$version"
-mkdir -p -- "$package_stage/docs" "$package_stage/game-mod/LotFArchipelago"
+mkdir -p -- "$package_stage/game-mod/LotFArchipelago"
 cp -- "$dist/lotf.apworld" "$package_stage/"
 cp -- "$root"/installer/windows/*.ps1 "$root"/installer/windows/*.cmd "$root"/installer/linux/*.sh "$package_stage/"
-cp -- "$root/README.md" "$root/CHANGELOG.md" "$root/LICENSE" "$root/VERSION" "$package_stage/"
+cp -- "$root/README.md" "$root/LICENSE" "$root/VERSION" "$package_stage/"
 cp -- "$root/player-options/Lords of the Fallen.yaml" "$package_stage/"
-cp -a -- "$root/docs/." "$package_stage/docs/"
 cp -a -- "$root/game-mod/LotFArchipelago/." "$package_stage/game-mod/LotFArchipelago/"
+rm -f -- "$package_stage/game-mod/LotFArchipelago/Assets/README.txt"
 
 linux_package_parent="$build/package-linux"
 mkdir -p -- "$linux_package_parent"

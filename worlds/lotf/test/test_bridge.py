@@ -135,9 +135,9 @@ class TestLuaPickupContract(TestCase):
         cls.source = bridge_path.read_text(encoding="utf-8")
 
     def test_loaded_pickups_are_prepared_by_guid(self) -> None:
-        self.assertIn('FindAllOf("Pickup")', self.source)
         self.assertIn("Pickup:PickupSetupFinished", self.source)
         self.assertIn("Pickup:Show", self.source)
+        self.assertIn("Pickup:TryTakePickup", self.source)
         self.assertIn("Bridge.prepared_items[item_name]", self.source)
         self.assertIn("pickup_identity(pickup)", self.source)
         self.assertIn("B21D92B8406214F0AEAF6B9B239BB661", self.source)
@@ -146,9 +146,12 @@ class TestLuaPickupContract(TestCase):
         self.assertNotIn("subsystem.RegisteredPickups", self.source)
         self.assertNotIn("pickups:ForEach", self.source)
         self.assertNotIn("NotifyOnNewObject(", self.source)
+        self.assertNotIn('FindAllOf("Pickup")', self.source)
+        self.assertNotIn("pickup_scan", self.source)
         self.assertNotIn("asset_classes", self.source)
         self.assertNotIn("archipelago_icon = texture", self.source)
-        self.assertIn("pickup_scan_batch = 128", self.source)
+        self.assertIn('not string.find(player_name, "CustomizationCharacter"', self.source)
+        self.assertIn("last_player_scan_ms", self.source)
 
     def test_item_classes_are_loaded_with_a_short_name_fallback(self) -> None:
         self.assertIn("LoadAsset(load_path)", self.source)

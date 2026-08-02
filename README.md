@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.2.3" src="https://img.shields.io/badge/version-0.2.3-b76e45">
+  <img alt="Version 0.2.4" src="https://img.shields.io/badge/version-0.2.4-b76e45">
   <img alt="Archipelago 0.6.7 or newer" src="https://img.shields.io/badge/Archipelago-0.6.7%2B-6d5dfc">
   <img alt="Windows and Linux through Proton" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%2FProton-4a90a4">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3c9b5f">
@@ -46,7 +46,7 @@ co-op, or invasions.
   transparent Archipelago icon for other-game items.
 
 The release includes `lotf.apworld`, the UE4SS game mod, a commented player
-YAML, Windows and Linux tools, and documentation.
+YAML, the tools for its target platform, the installation guide, and license.
 
 ## Requirements
 
@@ -84,6 +84,10 @@ do not use a source-code, `zDEV`, or experimental archive.
    - select the Steam game folder from step 2; and
    - choose **Install** and wait for the progress bar to reach 100%.
 
+   The installer sets `bUseUObjectArrayCache = false` in `UE4SS-settings.ini`.
+   This is required for stable startup and level streaming with the supported
+   game build; uninstall restores the value that existed before installation.
+
 6. In Archipelago Launcher, choose **Install APWorld** and select
    `lotf.apworld` from the extracted release folder.
 7. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players` folder,
@@ -92,7 +96,8 @@ do not use a source-code, `zDEV`, or experimental archive.
 The installer remembers the game folder. For later sessions,
 `Start-LotF-AP.cmd` starts the game immediately without a path picker or
 confirmation. `Uninstall-LotFArchipelago.cmd` removes this mod using the same
-saved path. It leaves UE4SS, saves, logs, backups, and unrelated mods intact.
+saved path. It leaves UE4SS, saves, logs, backups, and unrelated mods intact,
+and restores the previous UE4SS object-array cache setting.
 
 ## Linux and Proton installation
 
@@ -106,8 +111,9 @@ bash ./install-lotf-archipelago.sh \
   --game-path "$HOME/.local/share/Steam/steamapps/common/Lords of the Fallen"
 ```
 
-The installer saves the game location. Subsequent starts and uninstallations
-do not require `--game-path`:
+The installer saves the game location and applies the same required UE4SS
+object-array cache setting as the Windows installer. Subsequent starts and
+uninstallations do not require `--game-path`:
 
 ```bash
 bash ./start-lotf-ap.sh
@@ -177,7 +183,7 @@ items cannot be placed at protected missable quest checks. Faction rewards and
 Crucible encounters are excluded. `all_bosses` contains only encounters that
 remain available regardless of ending route and quest choices.
 
-See [Progression and location safety](docs/PROGRESSION.md) for the advancement
+See [Progression and location safety](https://github.com/sdwoodard/LotF-AP/blob/main/docs/PROGRESSION.md) for the advancement
 list, unsafe-location rules, excluded sources, and audited boss set.
 
 ## Crash recovery and diagnostics
@@ -194,9 +200,9 @@ Logs append across sessions:
 
 Run `New-LotFDiagnosticBundle.cmd` on Windows or
 `new-lotf-diagnostic-bundle.sh` on Linux to collect bridge logs, client logs,
-launcher details, installed game identity, and UE4SS output. Add the generated
-multiworld and player YAML when they are safe to share. Save files and server
-passwords are excluded.
+launcher details, installed game identity, UE4SS settings, and UE4SS output.
+Add the generated multiworld and player YAML when they are safe to share. Save
+files and server passwords are excluded.
 
 ## Building a release
 
@@ -224,7 +230,7 @@ bash ./scripts/linux/build-release.sh \
   --game-path "$HOME/.local/share/Steam/steamapps/common/Lords of the Fallen"
 ```
 
-See [Development](docs/DEVELOPMENT.md) for test commands and acceptance
+See [Development](https://github.com/sdwoodard/LotF-AP/blob/main/docs/DEVELOPMENT.md) for test commands and acceptance
 criteria. Runtime hooks still require an offline game smoke test after game,
 Proton, or UE4SS updates.
 

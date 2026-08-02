@@ -23,9 +23,53 @@ fi
     printf 'Lords of the Fallen was not found; pass --game-path.\n' >&2; exit 1;
 }
 win64="$game_path/LOTF2/Binaries/Win64"
+data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
+mkdir -p -- "$data_root"
 if [[ ! -f "$win64/ue4ss/UE4SS.dll" && ! -f "$win64/UE4SS.dll" ]]; then
     ((allow_missing_ue4ss)) || { printf 'Install RE-UE4SS 3.x first, or pass --allow-missing-ue4ss.\n' >&2; exit 1; }
     printf 'Warning: UE4SS was not found; staging the mod only.\n' >&2
+fi
+
+ue4ss_settings=""
+if [[ -f "$win64/ue4ss/UE4SS.dll" ]]; then
+    ue4ss_settings="$win64/ue4ss/UE4SS-settings.ini"
+elif [[ -f "$win64/UE4SS.dll" ]]; then
+    ue4ss_settings="$win64/UE4SS-settings.ini"
+fi
+if [[ -n "$ue4ss_settings" ]]; then
+    [[ -f "$ue4ss_settings" ]] || { printf 'UE4SS-settings.ini was not found beside UE4SS.dll: %s\n' "$ue4ss_settings" >&2; exit 1; }
+    ue4ss_settings=$(cd -- "$(dirname -- "$ue4ss_settings")" && printf '%s/%s\n' "$PWD" "$(basename -- "$ue4ss_settings")")
+    cache_path_state="$data_root/ue4ss-settings-path.txt"
+    cache_previous_state="$data_root/ue4ss-cache-previous.txt"
+    if [[ -f "$cache_path_state" && -f "$cache_previous_state" ]]; then
+        IFS= read -r saved_settings < "$cache_path_state"
+        [[ "$saved_settings" == "$ue4ss_settings" ]] || { printf 'A prior installation recorded a different UE4SS settings file. Uninstall it first.\n' >&2; exit 1; }
+    else
+        previous="__absent__"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^[[:space:]]*bUseUObjectArrayCache[[:space:]]*=[[:space:]]*(true|false|1|0) ]]; then
+                previous=${BASH_REMATCH[1]}
+                break
+            fi
+        done < "$ue4ss_settings"
+        printf '%s\n' "$ue4ss_settings" > "$cache_path_state"
+        printf '%s\n' "$previous" > "$cache_previous_state"
+    fi
+
+    temporary_settings="$ue4ss_settings.tmp.$$"
+    found_cache_setting=0
+    : > "$temporary_settings"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^([[:space:]]*bUseUObjectArrayCache[[:space:]]*=[[:space:]])(true|false|1|0)(.*)$ ]]; then
+            printf '%sfalse%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[3]}" >> "$temporary_settings"
+            found_cache_setting=1
+        else
+            printf '%s\n' "$line" >> "$temporary_settings"
+        fi
+    done < "$ue4ss_settings"
+    ((found_cache_setting)) || printf 'bUseUObjectArrayCache = false\n' >> "$temporary_settings"
+    mv -- "$temporary_settings" "$ue4ss_settings"
+    printf 'Configured UE4SS object-array caching off for Lords of the Fallen stability.\n'
 fi
 source_dir="$script_dir/game-mod/LotFArchipelago"
 [[ -f "$source_dir/Scripts/main.lua" ]] || source_dir="$script_dir/../game-mod/LotFArchipelago"
@@ -57,7 +101,5 @@ else
     printf 'LotFArchipelago : 1\n' > "$mods_text"
 fi
 printf 'Installed LotF Archipelago into %s\n' "$target"
-data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
-mkdir -p -- "$data_root"
 printf '%s\n' "$(cd -- "$game_path" && pwd)" > "$data_root/game-path.txt"
 printf 'Saved the game location for the launcher and uninstaller.\n'

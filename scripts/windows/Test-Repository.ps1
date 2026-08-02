@@ -33,12 +33,12 @@ if ($luaBridge.IndexOf('B21D92B8406214F0AEAF6B9B239BB661', [System.StringCompari
 if ($luaBridge.IndexOf('/Script/LOTF2.Pickup:OnTakePickupEndDelegate', [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Lua bridge is missing the pickup-completion correlation hook.'
 }
-foreach ($pickupRuntimePath in @('FindAllOf("Pickup")', 'Pickup:PickupSetupFinished', 'Pickup:Show', 'LoadAsset(load_path)')) {
+foreach ($pickupRuntimePath in @('Pickup:PickupSetupFinished', 'Pickup:Show', 'Pickup:TryTakePickup', 'LoadAsset(load_path)')) {
     if ($luaBridge.IndexOf($pickupRuntimePath, [System.StringComparison]::Ordinal) -lt 0) {
         throw "Lua bridge is missing required pickup runtime path: $pickupRuntimePath"
     }
 }
-foreach ($unsafePickupPath in @('subsystem.RegisteredPickups', 'pickups:ForEach', 'NotifyOnNewObject(', 'asset_classes', 'archipelago_icon = texture')) {
+foreach ($unsafePickupPath in @('subsystem.RegisteredPickups', 'pickups:ForEach', 'NotifyOnNewObject(', 'FindAllOf("Pickup")', 'pickup_scan', 'asset_classes', 'archipelago_icon = texture')) {
     if ($luaBridge.IndexOf($unsafePickupPath, [System.StringComparison]::Ordinal) -ge 0) {
         throw "Lua bridge retains unsafe pickup/object-lifetime path: $unsafePickupPath"
     }
@@ -93,6 +93,17 @@ if ($installerSource.IndexOf('ReleaseZip', [System.StringComparison]::Ordinal) -
     $installerSource.IndexOf('game-mod\LotFArchipelago', [System.StringComparison]::Ordinal) -lt 0) {
     throw 'Windows installer must use the extracted release files beside itself without a package picker.'
 }
+$uninstallerSource = Get-Content -Raw -LiteralPath (Join-Path $root 'installer\windows\Uninstall-LotFArchipelago.ps1')
+foreach ($cacheContract in @('bUseUObjectArrayCache', "'false'", 'ue4ss_object_array_cache_previous')) {
+    if ($installerSource.IndexOf($cacheContract, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Windows installer is missing the UE4SS cache compatibility contract: $cacheContract"
+    }
+}
+foreach ($restoreContract in @('Restore-Ue4ssCompatibility', 'ue4ss_object_array_cache_previous')) {
+    if ($uninstallerSource.IndexOf($restoreContract, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "Windows uninstaller is missing the UE4SS cache restoration contract: $restoreContract"
+    }
+}
 $launcherSource = Get-Content -Raw -LiteralPath (Join-Path $root 'installer\windows\Start-LotF-AP.ps1')
 foreach ($offlineSetting in @('-NoEAC', '-Offline', '-NoRedpointEOS', '-NoOnlineSubsystemRedpointEOS', "SteamAppId = '1501750'")) {
     if ($launcherSource.IndexOf($offlineSetting, [System.StringComparison]::Ordinal) -lt 0) {
@@ -111,6 +122,13 @@ if ($launcherSource.IndexOf('ShowDialog', [System.StringComparison]::Ordinal) -g
 $buildSource = Get-Content -Raw -LiteralPath (Join-Path $root 'scripts\windows\Build-Release.ps1')
 if ($buildSource.IndexOf('Windows-Installer', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
     throw 'The separate Windows installer archive must not be built.'
+}
+if ($buildSource -match "Copy-Item[^`r`n]+CHANGELOG\.md" -or
+    $buildSource -match "Copy-Item[^`r`n]+docs\\") {
+    throw 'Player release archives must not contain repository-only changelog or developer documentation.'
+}
+if ($buildSource.IndexOf('Assets\README.txt', [System.StringComparison]::Ordinal) -lt 0) {
+    throw 'The release builder must remove the runtime-unnecessary asset provenance note.'
 }
 
 if ($GamePath) {

@@ -29,6 +29,9 @@ temporary=$(mktemp -d -t lotf-ap-diagnostics.XXXXXXXX)
 trap 'rm -rf -- "$temporary"' EXIT
 for directory in logs recovery bridge; do [[ ! -e "$data_root/$directory" ]] || cp -a -- "$data_root/$directory" "$temporary/"; done
 [[ ! -f "$data_root/state.txt" ]] || cp -- "$data_root/state.txt" "$temporary/"
+for state_file in game-path.txt ue4ss-settings-path.txt ue4ss-cache-previous.txt; do
+    [[ ! -f "$data_root/$state_file" ]] || cp -- "$data_root/$state_file" "$temporary/"
+done
 mkdir -p -- "$temporary/attachments"
 [[ -z "$multiworld" ]] || cp -- "$multiworld" "$temporary/attachments/multiworld-$(basename "$multiworld")"
 [[ -z "$player_yaml" ]] || cp -- "$player_yaml" "$temporary/attachments/player-yaml-$(basename "$player_yaml")"
@@ -41,6 +44,8 @@ if [[ -n "$game_path" ]]; then
     fi
     [[ ! -f "$game_path/LOTF2/Binaries/Win64/UE4SS.log" ]] || cp -- "$game_path/LOTF2/Binaries/Win64/UE4SS.log" "$temporary/"
     [[ ! -f "$game_path/LOTF2/Binaries/Win64/ue4ss/UE4SS.log" ]] || cp -- "$game_path/LOTF2/Binaries/Win64/ue4ss/UE4SS.log" "$temporary/UE4SS-current-layout.log"
+    [[ ! -f "$game_path/LOTF2/Binaries/Win64/UE4SS-settings.ini" ]] || cp -- "$game_path/LOTF2/Binaries/Win64/UE4SS-settings.ini" "$temporary/"
+    [[ ! -f "$game_path/LOTF2/Binaries/Win64/ue4ss/UE4SS-settings.ini" ]] || cp -- "$game_path/LOTF2/Binaries/Win64/ue4ss/UE4SS-settings.ini" "$temporary/UE4SS-current-layout-settings.ini"
 fi
 version_file="$script_dir/VERSION"
 [[ -f "$version_file" ]] || version_file="$script_dir/../VERSION"

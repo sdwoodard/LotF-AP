@@ -47,6 +47,10 @@ try {
     if (Test-Path -LiteralPath $state) {
         Copy-Item -LiteralPath $state -Destination $resolvedTemporary
     }
+    $installState = Join-Path $dataRoot 'install.json'
+    if (Test-Path -LiteralPath $installState -PathType Leaf) {
+        Copy-Item -LiteralPath $installState -Destination $resolvedTemporary
+    }
 
     $attachments = Join-Path $resolvedTemporary 'attachments'
     New-Item -ItemType Directory -Force -Path $attachments | Out-Null
@@ -79,6 +83,15 @@ try {
                 if (Test-Path -LiteralPath $ue4ssLog) {
                     $logName = if ($ue4ssLog -match '\\ue4ss\\') { 'UE4SS-current-layout.log' } else { 'UE4SS.log' }
                     Copy-Item -LiteralPath $ue4ssLog -Destination (Join-Path $resolvedTemporary $logName)
+                }
+            }
+            foreach ($ue4ssSettings in @(
+                (Join-Path $GamePath 'LOTF2\Binaries\Win64\UE4SS-settings.ini'),
+                (Join-Path $GamePath 'LOTF2\Binaries\Win64\ue4ss\UE4SS-settings.ini')
+            )) {
+                if (Test-Path -LiteralPath $ue4ssSettings -PathType Leaf) {
+                    $settingsName = if ($ue4ssSettings -match '\\ue4ss\\') { 'UE4SS-current-layout-settings.ini' } else { 'UE4SS-settings.ini' }
+                    Copy-Item -LiteralPath $ue4ssSettings -Destination (Join-Path $resolvedTemporary $settingsName)
                 }
             }
         }

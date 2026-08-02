@@ -24,6 +24,11 @@ The CommonClient owns the network connection and translates AP packets into
 idempotent game commands. Lua is intentionally network-free: it observes the
 game, grants mapped assets, and writes small events to disk.
 
+The installer disables UE4SS's `bUseUObjectArrayCache` compatibility setting.
+The supported game build can invalidate that cache while constructing objects
+during menu and level transitions; both settings paths and their prior values
+are retained so uninstall can restore the user's original configuration.
+
 ## Identity, logging, and replay safety
 
 A session key is the first 24 hexadecimal characters of SHA-256 over the room
@@ -66,15 +71,15 @@ locations and received-item history.
 
 The retail `DA_PrePlacedRandomLootMap` assigns an FGuid to every physical actor
 the game itself considers eligible for pre-placed loot. Protocol v7 maps those
-identities to 597 checks. The bridge enumerates Blueprint-derived actors from
-post-initialization `PickupSetupFinished` and `Show` hooks. A bounded
-`FindAllOf("Pickup")` snapshot covers pickups that were already loaded before
-the client attached. The bridge never traverses the game's live pickup array
-and never retains UE4SS object wrappers across ticks or map transitions. It
-reads each pickup's reflected `LOTF2SerializationComponent.GetStringId()`,
-replaces the pending inventory object before its vanilla item can enter
-inventory, then durably emits the check. The tutorial Throwing Stone row is
-omitted.
+identities to 597 checks. The bridge observes Blueprint-derived actors through
+post-initialization `PickupSetupFinished` and `Show` hooks. The
+`TryTakePickup` pre-hook also prepares an actor immediately before interaction,
+which covers pickups already loaded when the client attaches without a global
+object-array scan. The bridge never traverses the game's live pickup array and
+never retains UE4SS object wrappers across ticks or map transitions. It reads
+each pickup's reflected `LOTF2SerializationComponent.GetStringId()`, replaces
+the pending inventory object before its vanilla item can enter inventory, then
+durably emits the check. The tutorial Throwing Stone row is omitted.
 
 Unique keys, quest objects, and stigmas additionally use cooked `UItemData`
 markers. Both GUIDs and class paths survive ASLR and ordinary code-layout

@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $script:OutputBox = $null
 $script:ProgressBar = $null
-$script:ClientVersion = '0.2.3'
+$script:ClientVersion = '0.2.4'
 $script:ArchipelagoCompatibility = '0.6.7 or newer'
 $script:ConfigPath = Join-Path $env:LOCALAPPDATA 'LotFArchipelago\install.json'
 
@@ -85,19 +85,77 @@ function Resolve-ReleasePayload {
 function Save-InstallConfiguration {
     param(
         [string]$ResolvedGamePath,
-        [string]$InstalledModPath
+        [string]$InstalledModPath,
+        [hashtable]$Ue4ssCompatibility
     )
     $directory = Split-Path -Parent $script:ConfigPath
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $configuration = [ordered]@{
-        schema = 1
+        schema = 2
         game_path = $ResolvedGamePath
         mod_path = $InstalledModPath
         installed_version = $script:ClientVersion
         tools_path = $PSScriptRoot
         installed_utc = [DateTime]::UtcNow.ToString('o')
     }
+    if ($Ue4ssCompatibility -and $Ue4ssCompatibility.SettingsPath) {
+        $configuration.ue4ss_settings_path = $Ue4ssCompatibility.SettingsPath
+        $configuration.ue4ss_object_array_cache_previous = $Ue4ssCompatibility.Previous
+        $configuration.ue4ss_object_array_cache_setting_added = $Ue4ssCompatibility.Added
+    }
     $configuration | ConvertTo-Json | Set-Content -LiteralPath $script:ConfigPath -Encoding UTF8
+}
+
+function Set-Ue4ssCompatibility {
+    param([string]$SettingsPath)
+    if (-not $SettingsPath) { return @{} }
+    if (-not (Test-Path -LiteralPath $SettingsPath -PathType Leaf)) {
+        throw "UE4SS-settings.ini was not found beside UE4SS.dll: $SettingsPath"
+    }
+
+    $resolvedSettings = (Resolve-Path -LiteralPath $SettingsPath).Path
+    $content = [System.IO.File]::ReadAllText($resolvedSettings)
+    $settingPattern = [regex]::new(
+        '^(\s*bUseUObjectArrayCache\s*=\s*)(true|false|1|0)(\s*(?:[;#].*)?)$',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor
+        [System.Text.RegularExpressions.RegexOptions]::Multiline
+    )
+    $match = $settingPattern.Match($content)
+    $previous = if ($match.Success) { $match.Groups[2].Value } else { $null }
+    $added = -not $match.Success
+
+    # Preserve the original value across a reinstall so uninstall can restore
+    # what existed before LotF Archipelago first changed this setting.
+    if (Test-Path -LiteralPath $script:ConfigPath -PathType Leaf) {
+        try {
+            $existing = Get-Content -Raw -LiteralPath $script:ConfigPath | ConvertFrom-Json
+            $pathProperty = $existing.PSObject.Properties['ue4ss_settings_path']
+            $previousProperty = $existing.PSObject.Properties['ue4ss_object_array_cache_previous']
+            $addedProperty = $existing.PSObject.Properties['ue4ss_object_array_cache_setting_added']
+            if ($pathProperty -and $previousProperty -and
+                [string]$pathProperty.Value -eq $resolvedSettings) {
+                $previous = $previousProperty.Value
+                $added = $addedProperty -and [bool]$addedProperty.Value
+            }
+        } catch {
+            Write-InstallOutput "Warning: could not preserve the previous UE4SS cache value: $($_.Exception.Message)"
+        }
+    }
+
+    if ($match.Success) {
+        $replacement = $match.Groups[1].Value + 'false' + $match.Groups[3].Value
+        $content = $content.Substring(0, $match.Index) + $replacement + $content.Substring($match.Index + $match.Length)
+    } else {
+        if ($content.Length -gt 0 -and -not $content.EndsWith("`n")) { $content += [Environment]::NewLine }
+        $content += 'bUseUObjectArrayCache = false' + [Environment]::NewLine
+    }
+    [System.IO.File]::WriteAllText($resolvedSettings, $content, [System.Text.UTF8Encoding]::new($false))
+    Write-InstallOutput 'Configured UE4SS object-array caching off for Lords of the Fallen stability.'
+    return @{
+        SettingsPath = $resolvedSettings
+        Previous = $previous
+        Added = $added
+    }
 }
 
 function Invoke-LotFInstallation {
@@ -121,6 +179,15 @@ function Invoke-LotFInstallation {
     }
     Write-InstallOutput "Validated game folder: $resolvedGamePath"
     Set-InstallProgress 40
+
+    $ue4ssSettings = if (Test-Path -LiteralPath $ue4ssCurrent) {
+        Join-Path (Split-Path -Parent $ue4ssCurrent) 'UE4SS-settings.ini'
+    } elseif (Test-Path -LiteralPath $ue4ssLegacy) {
+        Join-Path (Split-Path -Parent $ue4ssLegacy) 'UE4SS-settings.ini'
+    } else {
+        $null
+    }
+    $ue4ssCompatibility = Set-Ue4ssCompatibility $ue4ssSettings
 
     $modsDirectory = if (Test-Path -LiteralPath $ue4ssCurrent) { Join-Path $win64 'ue4ss\Mods' } else { Join-Path $win64 'Mods' }
     $target = Join-Path $modsDirectory 'LotFArchipelago'
@@ -152,7 +219,7 @@ function Invoke-LotFInstallation {
     Write-InstallOutput 'Enabled LotFArchipelago in mods.txt.'
     Set-InstallProgress 85
 
-    Save-InstallConfiguration $resolvedGamePath $target
+    Save-InstallConfiguration $resolvedGamePath $target $ue4ssCompatibility
     Write-InstallOutput "Saved the game location for Start and Uninstall: $($script:ConfigPath)"
     Write-InstallOutput 'Installation complete. Install lotf.apworld with Archipelago Launcher before generating or playing.'
     Set-InstallProgress 100

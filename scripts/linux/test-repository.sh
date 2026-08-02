@@ -21,10 +21,10 @@ version=$(tr -d '[:space:]' < "$root/VERSION")
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/archipelago.json"
 grep -Fq "\"world_version\": \"$version\"" "$root/worlds/lotf/world.py"
 grep -Eq "version[[:space:]]*=[[:space:]]*\"$version\"" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
-for pickup_runtime_path in 'FindAllOf("Pickup")' Pickup:PickupSetupFinished Pickup:Show 'LoadAsset(load_path)'; do
+for pickup_runtime_path in Pickup:PickupSetupFinished Pickup:Show Pickup:TryTakePickup 'LoadAsset(load_path)'; do
     grep -Fq "$pickup_runtime_path" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"
 done
-for unsafe_pickup_path in subsystem.RegisteredPickups 'pickups:ForEach' 'NotifyOnNewObject(' asset_classes 'archipelago_icon = texture'; do
+for unsafe_pickup_path in subsystem.RegisteredPickups 'pickups:ForEach' 'NotifyOnNewObject(' 'FindAllOf("Pickup")' pickup_scan asset_classes 'archipelago_icon = texture'; do
     if grep -Fq "$unsafe_pickup_path" "$root/game-mod/LotFArchipelago/Scripts/bridge.lua"; then
         printf 'Lua bridge retains unsafe pickup/object-lifetime path: %s\n' "$unsafe_pickup_path" >&2
         exit 1
@@ -62,6 +62,16 @@ if grep -Fq 'ReleaseZip' "$root/installer/windows/Install-LotFArchipelago.ps1"; 
     exit 1
 fi
 grep -Fq 'game-mod\LotFArchipelago' "$root/installer/windows/Install-LotFArchipelago.ps1"
+grep -Fq 'bUseUObjectArrayCache' "$root/installer/windows/Install-LotFArchipelago.ps1"
+grep -Fq 'ue4ss_object_array_cache_previous' "$root/installer/windows/Install-LotFArchipelago.ps1"
+grep -Fq 'Restore-Ue4ssCompatibility' "$root/installer/windows/Uninstall-LotFArchipelago.ps1"
+grep -Fq 'bUseUObjectArrayCache' "$root/installer/linux/install-lotf-archipelago.sh"
+grep -Fq 'ue4ss-cache-previous.txt' "$root/installer/linux/uninstall-lotf-archipelago.sh"
+if grep -Eq 'cp .*(CHANGELOG\.md|docs/\.)' "$root/scripts/linux/build-release.sh"; then
+    printf 'Player release archives must not contain repository-only changelog or developer documentation.\n' >&2
+    exit 1
+fi
+grep -Fq 'Assets/README.txt' "$root/scripts/linux/build-release.sh"
 for offline_setting in -NoEAC -Offline -NoRedpointEOS -NoOnlineSubsystemRedpointEOS; do
     grep -Fq -- "$offline_setting" "$root/installer/windows/Start-LotF-AP.ps1"
     grep -Fq -- "$offline_setting" "$root/installer/linux/start-lotf-ap.sh"

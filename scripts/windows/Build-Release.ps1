@@ -43,16 +43,13 @@ Copy-Item -Path (Join-Path $root 'installer\windows\*.ps1') -Destination $packag
 Copy-Item -Path (Join-Path $root 'installer\windows\*.cmd') -Destination $packageStage
 Copy-Item -Path (Join-Path $root 'installer\linux\*.sh') -Destination $packageStage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $packageStage 'README.md')
-Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination (Join-Path $packageStage 'CHANGELOG.md')
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $packageStage 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $root 'VERSION') -Destination (Join-Path $packageStage 'VERSION')
 Copy-Item -LiteralPath (Join-Path $root 'player-options\Lords of the Fallen.yaml') -Destination $packageStage
-$packageDocs = Join-Path $packageStage 'docs'
-New-Item -ItemType Directory -Force -Path $packageDocs | Out-Null
-Copy-Item -Path (Join-Path $root 'docs\*') -Destination $packageDocs -Recurse
 $payload = Join-Path $packageStage 'game-mod\LotFArchipelago'
 New-Item -ItemType Directory -Force -Path $payload | Out-Null
 Copy-Item -Path (Join-Path $root 'game-mod\LotFArchipelago\*') -Destination $payload -Recurse
+Remove-Item -LiteralPath (Join-Path $payload 'Assets\README.txt') -Force
 
 $linuxPackageParent = Join-Path $build 'package-linux'
 New-Item -ItemType Directory -Force -Path $linuxPackageParent | Out-Null
