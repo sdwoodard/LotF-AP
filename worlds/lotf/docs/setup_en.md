@@ -20,25 +20,23 @@ Back up the save directory and use a new character for each seed:
 2. Extract the *contents* of `UE4SS_v3.0.1.zip` directly into the game's
    `LOTF2\Binaries\Win64` folder. `dwmapi.dll`, `UE4SS.dll`, and `Mods` must be
    directly inside `Win64`, not inside another nested folder.
-3. Download the release's `-win64.zip` and Windows Installer ZIP. Extract only
-   the small Installer ZIP, then double-click `Install-LotFArchipelago.cmd`.
-   Select the untouched `-win64.zip` and the game folder when asked. The `.cmd`
-   wrapper works even when normal PowerShell script execution is disabled. It
-   installs from a temporary extraction, cleans that extraction, and leaves the
-   APWorld, YAML, documentation, and start/uninstall tools beside the installer.
+3. Download the release's `LotF-Archipelago-x.y.z-win64.zip`, choose
+   **Extract All**, and double-click `Install-LotFArchipelago.cmd` in the
+   extracted folder. In the installer window, select the downloaded ZIP and
+   the game folder, then choose **Install**.
 4. In Archipelago Launcher, choose **Install APWorld** and select the
    `lotf.apworld` beside the installer.
 5. Edit `Lords of the Fallen.yaml`, place it in Archipelago's `Players`
    directory, and generate locally.
-6. Put Steam in Offline Mode but leave it running on an account that owns the
-   full game. Open **Lords of the Fallen Client**, connect to the room, then
-   double-click `Start-LotF-AP.cmd` and select the game folder.
+6. Leave Steam running on an account that owns the full game. Open **Lords of
+   the Fallen Client**, connect to the room, then double-click
+   `Start-LotF-AP.cmd`. The saved installation path is used automatically.
 
-The guided launcher supplies full-game Steam AppID `1501750` and disables the
-anti-cheat path. Always use it for modded play. If Friend's Pass is shown,
-close the game, verify full-game ownership/files in Steam, start the unmodded
-game online once, return to Offline Mode, and retry. Do not create
-`steam_appid.txt`.
+The launcher supplies full-game Steam AppID `1501750`, disables the anti-cheat
+and EOS paths, and the bridge disables the game's online-mode setting. Confirm
+offline status at the main menu before loading the seed. If Friend's Pass is
+shown, close the game, verify full-game ownership/files in Steam, start the
+unmodded game once, and retry. Do not create `steam_appid.txt`.
 
 ## Linux/Proton installation
 
@@ -55,7 +53,7 @@ Start `python3 Launcher.py` from the Archipelago checkout, open the game client,
 connect, then run:
 
 ```bash
-bash ./start-lotf-ap.sh --game-path "<Steam game folder>"
+bash ./start-lotf-ap.sh
 ```
 
 Pass `--proton` and `--compat-data` if Steam/Proton auto-detection is wrong.

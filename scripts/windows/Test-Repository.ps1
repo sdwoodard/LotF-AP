@@ -30,6 +30,9 @@ if ($luaProtocol -ne $pythonProtocol) {
 if ($luaBridge.IndexOf('B21D92B8406214F0AEAF6B9B239BB661', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
     throw 'Lua bridge is missing the explicit tutorial Throwing Stone pickup guard.'
 }
+if ($luaBridge.IndexOf('/Script/LOTF2.Pickup:OnTakePickupEndDelegate', [System.StringComparison]::Ordinal) -lt 0) {
+    throw 'Lua bridge is missing the pickup-completion correlation hook.'
+}
 $worldSource = Get-Content -Raw -LiteralPath (Join-Path $root 'worlds\lotf\world.py')
 $slotVersion = [regex]::Match($worldSource, '"world_version":\s*"([^"]+)"').Groups[1].Value
 if ($slotVersion -ne $version) {
@@ -45,6 +48,7 @@ $required = @(
     'game-mod\LotFArchipelago\Scripts\bridge.lua',
     'game-mod\LotFArchipelago\Assets\archipelago.png',
     '.github\assets\lotf-icon.png',
+    '.github\assets\social-preview.jpg',
     'installer\windows\Install-LotFArchipelago.ps1',
     'installer\windows\Install-LotFArchipelago.cmd',
     'worlds\lotf\preplaced_pickups.py'
@@ -63,6 +67,36 @@ foreach ($file in $powershellFiles) {
     if ($errors.Count) {
         throw "PowerShell parse error in $($file.FullName): $($errors[0].Message)"
     }
+}
+
+$installerSource = Get-Content -Raw -LiteralPath (Join-Path $root 'installer\windows\Install-LotFArchipelago.ps1')
+foreach ($control in @('System.Windows.Forms.Form', 'System.Windows.Forms.ProgressBar', 'System.Windows.Forms.RichTextBox')) {
+    if ($installerSource.IndexOf($control, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "Windows installer is missing required GUI control: $control"
+    }
+}
+if ($installerSource.IndexOf("ReadOnly = `$true", [System.StringComparison]::Ordinal) -lt 0 -or
+    $installerSource.IndexOf('install.json', [System.StringComparison]::Ordinal) -lt 0) {
+    throw 'Windows installer must provide read-only output and save install.json.'
+}
+$launcherSource = Get-Content -Raw -LiteralPath (Join-Path $root 'installer\windows\Start-LotF-AP.ps1')
+foreach ($offlineSetting in @('-NoEAC', '-Offline', '-NoRedpointEOS', '-NoOnlineSubsystemRedpointEOS', "SteamAppId = '1501750'")) {
+    if ($launcherSource.IndexOf($offlineSetting, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "Windows launcher is missing offline/full-game setting: $offlineSetting"
+    }
+}
+foreach ($gameOfflineSetting in @('SetOnlineModeEnabled(false)', 'SetCrossplayEnabled(false)', 'SetAllowInvasionsEnabled(false)')) {
+    if ($luaBridge.IndexOf($gameOfflineSetting, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "Lua bridge is missing game offline safeguard: $gameOfflineSetting"
+    }
+}
+if ($launcherSource.IndexOf('ShowDialog', [System.StringComparison]::Ordinal) -ge 0 -or
+    $launcherSource.IndexOf('MessageBox', [System.StringComparison]::Ordinal) -ge 0) {
+    throw 'Windows launcher must start without a picker or confirmation dialog.'
+}
+$buildSource = Get-Content -Raw -LiteralPath (Join-Path $root 'scripts\windows\Build-Release.ps1')
+if ($buildSource.IndexOf('Windows-Installer', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+    throw 'The separate Windows installer archive must not be built.'
 }
 
 if ($GamePath) {
@@ -100,6 +134,7 @@ if ($GamePath) {
         'SaveGameAsync',
         'OnCreditScreenEndedCallback',
         'TryTakePickup',
+        'OnTakePickupEndDelegate',
         'GetStringId',
         'PrePlacedRandomLootMap'
     )
@@ -231,6 +266,9 @@ if ($pythonExecutable) {
         (Join-Path $root 'worlds\lotf\assets\lotf-icon.png') `
         (Join-Path $root '.github\assets\lotf-icon.png')
     if ($LASTEXITCODE -ne 0) { throw 'PNG transparency validation failed.' }
+    & $pythonExecutable (Join-Path $root 'scripts\common\Validate-SocialPreview.py') `
+        (Join-Path $root '.github\assets\social-preview.jpg')
+    if ($LASTEXITCODE -ne 0) { throw 'GitHub social-preview validation failed.' }
 } else {
     Write-Warning 'Python was not available; Archipelago CI will perform Python import and generation tests.'
 }

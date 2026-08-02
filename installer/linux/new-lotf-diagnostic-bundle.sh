@@ -19,6 +19,9 @@ done
 command -v zip >/dev/null || { printf 'zip is required.\n' >&2; exit 1; }
 data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
 [[ -d "$data_root" ]] || { printf 'No diagnostic data exists at %s\n' "$data_root" >&2; exit 1; }
+if [[ -z "$game_path" && -f "$data_root/game-path.txt" ]]; then
+    IFS= read -r game_path < "$data_root/game-path.txt"
+fi
 [[ -n "$output" ]] || output="$PWD/LotF-AP-Diagnostics-$(date -u +%Y%m%d-%H%M%S).zip"
 case "$output" in /*) ;; *) output="$PWD/$output" ;; esac
 [[ ! -e "$output" ]] || { printf 'Output already exists: %s\n' "$output" >&2; exit 1; }

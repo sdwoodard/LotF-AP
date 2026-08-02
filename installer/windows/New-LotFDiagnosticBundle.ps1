@@ -14,6 +14,13 @@ if (-not (Test-Path -LiteralPath $dataRoot -PathType Container)) {
     throw "No LotF Archipelago diagnostic data exists at $dataRoot"
 }
 
+if (-not $GamePath) {
+    $installConfiguration = Join-Path $dataRoot 'install.json'
+    if (Test-Path -LiteralPath $installConfiguration -PathType Leaf) {
+        $GamePath = [string](Get-Content -Raw -LiteralPath $installConfiguration | ConvertFrom-Json).game_path
+    }
+}
+
 if (-not $OutputPath) {
     $OutputPath = Join-Path (Get-Location) ("LotF-AP-Diagnostics-{0}.zip" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 }

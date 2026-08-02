@@ -2,12 +2,15 @@ local Protocol = require("protocol")
 local State = require("state")
 
 local Bridge = {
-    version = "0.2.0",
-    protocol_version = 4,
+    version = "0.2.1",
+    protocol_version = 5,
     session = nil,
     ready = false,
     markers = {},
     pickup_guids = {},
+    prepared_items = {},
+    prepared_pickups = {},
+    prepared_pickup_guids = {},
     items = {},
     placements = {},
     goal = nil,
@@ -22,6 +25,9 @@ local Bridge = {
     last_hook_attempt_ms = -2000,
     last_death_ms = -5000,
     last_grant_ms = 0,
+    last_pickup_scan_ms = -1000,
+    last_offline_attempt_ms = -2000,
+    offline_notice_emitted = false,
     last_player_name = nil,
     load_epoch = 0,
     active_cursor = 0,
@@ -31,6 +37,7 @@ local Bridge = {
     presentation_expires_ms = 0,
     pending_suppression = nil,
     pending_suppression_identity = nil,
+    pending_suppression_pickup = nil,
     suppression_expires_ms = 0,
     unmapped_pickups = {},
     error_times = {},
@@ -74,11 +81,54 @@ local function report_error(message)
     end
 end
 
+local function enforce_offline_mode()
+    local ok, settings = pcall(function()
+        return FindFirstOf("HexGameUserSettings")
+    end)
+    if not ok or not settings or not settings:IsValid() then
+        return
+    end
+
+    local status_ok, online = pcall(function()
+        return settings:IsOnlineModeEnabled()
+    end)
+    if status_ok and not online then
+        if not Bridge.offline_notice_emitted then
+            Bridge.offline_notice_emitted = true
+            log("Confirmed the game online-mode setting is disabled")
+        end
+        return
+    end
+
+    local changed = pcall(function()
+        settings:SetOnlineModeEnabled(false)
+    end)
+    pcall(function()
+        settings:SetCrossplayEnabled(false)
+    end)
+    pcall(function()
+        settings:SetAllowInvasionsEnabled(false)
+    end)
+    pcall(function()
+        settings:ApplySettings(false)
+    end)
+    pcall(function()
+        settings:SaveSettings()
+    end)
+    if changed and not Bridge.offline_notice_emitted then
+        Bridge.offline_notice_emitted = true
+        log("Disabled the game online-mode setting for Archipelago play")
+    end
+end
+
 local function reset(session)
     Bridge.session = session
     Bridge.ready = false
     Bridge.markers = {}
     Bridge.pickup_guids = {}
+    Bridge.prepared_items = {}
+    Bridge.prepared_pickups = {}
+    Bridge.prepared_pickup_guids = {}
     Bridge.items = {}
     Bridge.placements = {}
     Bridge.server_checked = {}
@@ -96,6 +146,7 @@ local function reset(session)
     Bridge.pending_presentation_location = nil
     Bridge.pending_suppression = nil
     Bridge.pending_suppression_identity = nil
+    Bridge.pending_suppression_pickup = nil
     Bridge.unmapped_pickups = {}
     Bridge.preserved_pickups_reported = {}
     Bridge.error_times = {}
@@ -161,24 +212,21 @@ end
 
 local function marker_for_value(value)
     value = unwrap(value)
-    local marker, row = marker_in_name(object_name(value))
+    local name = object_name(value)
+    local prepared = name and Bridge.prepared_items[name] or nil
+    if prepared then
+        return prepared.marker, prepared.row, true
+    end
+    local marker, row = marker_in_name(name)
     if row then
         return marker, row, false
     end
     if not value then
         return nil, nil, false
     end
-    for _, method in ipairs({"GetItemData", "GetItemDataClass"}) do
-        local ok, nested = pcall(function()
-            return value[method](value)
-        end)
-        if ok then
-            marker, row = marker_in_name(object_name(unwrap(nested)))
-            if row then
-                return marker, row, true
-            end
-        end
-    end
+    -- Reading the reflected fields is safer than speculatively invoking
+    -- methods on arbitrary hook parameters. The latter can enter invalid
+    -- native thunks in UE4SS when the value is not an inventory item.
     for _, property in ipairs({"ItemData", "ItemDataClass"}) do
         local ok, nested = pcall(function()
             return value[property]
@@ -330,17 +378,75 @@ local function pickup_identity(context)
     return normalize_guid(object_name(pickup))
 end
 
+local function pickup_inventory_item(pickup)
+    local ok, inventory_item = pcall(function()
+        return pickup:GetInventoryItem()
+    end)
+    inventory_item = ok and unwrap(inventory_item) or nil
+    if inventory_item and object_name(inventory_item) then
+        return inventory_item
+    end
+    return nil
+end
+
+local function prepare_pickup(pickup)
+    pickup = unwrap(pickup)
+    if not pickup or not object_name(pickup) then
+        return nil, nil, nil
+    end
+    local guid = pickup_identity(pickup)
+    if not guid or Bridge.preserved_pickups[guid] then
+        return guid, nil, nil
+    end
+    local row = Bridge.pickup_guids[guid]
+    if not row then
+        if not Bridge.unmapped_pickups[guid] then
+            Bridge.unmapped_pickups[guid] = true
+            log("Observed unmapped pickup GUID " .. guid)
+        end
+        return guid, nil, nil
+    end
+
+    local pickup_name = object_name(pickup)
+    Bridge.prepared_pickups[pickup_name] = row
+    local inventory_item = pickup_inventory_item(pickup)
+    local item_name = object_name(inventory_item)
+    if not inventory_item or not item_name then
+        return guid, row, nil
+    end
+    Bridge.prepared_items[item_name] = {
+        marker = "AP_GUID_" .. guid,
+        row = row,
+    }
+    if row.suppress and Bridge.prepared_pickup_guids[guid] ~= item_name then
+        if suppress_inventory_item(inventory_item) then
+            Bridge.prepared_pickup_guids[guid] = item_name
+            log("Prepared randomized pickup GUID " .. guid .. " (" .. tostring(row.retail_row) .. ")")
+        else
+            report_error("Could not prepare randomized pickup GUID " .. guid)
+        end
+    end
+    return guid, row, inventory_item
+end
+
+local function prepare_loaded_pickups()
+    local ok, pickups = pcall(function()
+        return FindAllOf("Pickup")
+    end)
+    if not ok or not pickups then
+        return
+    end
+    for _, pickup in ipairs(pickups) do
+        pcall(prepare_pickup, pickup)
+    end
+end
+
 local function observe_pickup(context)
     if not Bridge.ready or not Bridge.session then
         return
     end
     local pickup = unwrap(context)
-    local inventory_ok, inventory_item = pcall(function()
-        return pickup:GetInventoryItem()
-    end)
-    inventory_item = inventory_ok and unwrap(inventory_item) or nil
-
-    local guid = pickup_identity(context)
+    local guid, row, inventory_item = prepare_pickup(pickup)
     local preserved = guid and Bridge.preserved_pickups[guid] or nil
     if preserved then
         if not Bridge.preserved_pickups_reported[guid] then
@@ -349,16 +455,11 @@ local function observe_pickup(context)
         end
         return
     end
-    local row = guid and Bridge.pickup_guids[guid] or nil
     local marker = nil
     if not row and inventory_item then
         marker, row = marker_for_value(inventory_item)
     end
     if not row then
-        if guid and not Bridge.unmapped_pickups[guid] then
-            Bridge.unmapped_pickups[guid] = true
-            log("Observed unmapped pickup GUID " .. guid)
-        end
         return
     end
 
@@ -373,16 +474,28 @@ local function observe_pickup(context)
 
     Bridge.pending_suppression = row
     Bridge.pending_suppression_identity = identity
+    Bridge.pending_suppression_pickup = object_name(pickup)
     Bridge.suppression_expires_ms = now_ms() + 1000
 
     -- Most pre-placed pickups already own their UInventoryItem before
     -- TryTakePickup enters the inventory component. Mutating that instance is
     -- the earliest and most reliable way to keep the vanilla item out.
-    if inventory_item and suppress_inventory_item(inventory_item) then
-        record_row(row, Bridge.pending_suppression_identity)
-        Bridge.pending_suppression = nil
-        Bridge.pending_suppression_identity = nil
-        log("Suppressed vanilla inventory item for " .. identity)
+    if inventory_item and not suppress_inventory_item(inventory_item) then
+        report_error("Could not suppress vanilla inventory item for " .. identity)
+    end
+end
+
+local function observe_interaction(_component, context, ...)
+    if not Bridge.ready or not Bridge.session then
+        return
+    end
+    local interaction = unwrap(context)
+    local ok, pickup = pcall(function()
+        return interaction:GetInteractableObject()
+    end)
+    pickup = ok and unwrap(pickup) or nil
+    if pickup then
+        observe_pickup(pickup)
     end
 end
 
@@ -392,6 +505,7 @@ local function pending_suppression()
     end
     Bridge.pending_suppression = nil
     Bridge.pending_suppression_identity = nil
+    Bridge.pending_suppression_pickup = nil
     return nil
 end
 
@@ -403,7 +517,19 @@ local function complete_pending_suppression(method)
     record_row(row, Bridge.pending_suppression_identity or method)
     Bridge.pending_suppression = nil
     Bridge.pending_suppression_identity = nil
+    Bridge.pending_suppression_pickup = nil
     log("Suppressed vanilla pickup through " .. method)
+end
+
+local function observe_pickup_completed(context, result)
+    local succeeded = unwrap(result)
+    if succeeded == false then
+        return
+    end
+    observe_pickup(context)
+    if pending_suppression() then
+        complete_pending_suppression("Pickup:OnTakePickupEndDelegate")
+    end
 end
 
 local function observe_add_item(_context, item, ...)
@@ -700,9 +826,13 @@ end
 local function register_hooks()
     register_presentation_hooks()
     register_hook("/Script/LOTF2.Pickup:TryTakePickup", observe_pickup)
-    register_hook("/Script/LOTF2.AnathemaItemContainer:TryOpenInteraction", observe_pickup)
+    register_hook("/Script/LOTF2.Pickup:OnTakePickupEndDelegate", observe_pickup_completed)
+    register_hook("/Script/LOTF2.InteractionComponent:NotifyOnInteractionActivate", observe_interaction)
+    register_hook("/Script/LOTF2.InteractionComponent:OnInteractionActivate", observe_interaction)
+    register_hook("/Script/LOTF2.AnathemaItemContainer:TryOpenInteraction", observe_call)
     register_hook("/Script/LOTF2.AnathemaItemContainer:AddItemToInventory", observe_call)
     register_hook("/Script/LOTF2.InventoryComponent:AddItem", observe_add_item)
+    register_hook("/Script/LOTF2.InventoryComponent:OnItemAdded", observe_add_item)
     register_hook("/Script/LOTF2.InventoryComponent:AddItemByClass", observe_add_item_by_class)
     register_hook("/Script/LOTF2.InventoryComponent:AddItemByData", observe_add_item_by_data)
     register_hook(
@@ -1082,8 +1212,11 @@ local function process_record(fields)
         local protocol_version = tonumber(fields[2])
         local session = fields[3]
         if protocol_version ~= Bridge.protocol_version then
-            reset(session)
-            report_error("Protocol mismatch: client " .. tostring(protocol_version) .. ", mod " .. tostring(Bridge.protocol_version))
+            local message = "Protocol mismatch: client " .. tostring(protocol_version)
+                .. ", mod " .. tostring(Bridge.protocol_version)
+            reset(nil)
+            print("[LotF AP] ERROR: " .. message .. "\n")
+            Protocol.emit("ERROR", session, message)
             return
         end
         reset(session)
@@ -1198,12 +1331,22 @@ function Bridge.tick()
         end
     end
 
+    if now_ms() - Bridge.last_offline_attempt_ms >= 2000 then
+        enforce_offline_mode()
+        Bridge.last_offline_attempt_ms = now_ms()
+    end
+
+    if not Bridge.ready or not Bridge.session then
+        return
+    end
     if now_ms() - Bridge.last_hook_attempt_ms >= 2000 then
         register_hooks()
         Bridge.last_hook_attempt_ms = now_ms()
     end
-    if not Bridge.ready or not Bridge.session then
-        return
+
+    if now_ms() - Bridge.last_pickup_scan_ms >= 500 then
+        prepare_loaded_pickups()
+        Bridge.last_pickup_scan_ms = now_ms()
     end
 
     if Bridge.pending_presentation and now_ms() > Bridge.presentation_expires_ms then

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 game_path=""
+data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
 while (($#)); do
     case "$1" in
         --game-path) game_path=${2:?missing value}; shift ;;
@@ -9,7 +10,10 @@ while (($#)); do
     esac
     shift
 done
-[[ -n "$game_path" && -d "$game_path/LOTF2/Binaries/Win64" ]] || { printf -- '--game-path is required.\n' >&2; exit 2; }
+if [[ -z "$game_path" && -f "$data_root/game-path.txt" ]]; then
+    IFS= read -r game_path < "$data_root/game-path.txt"
+fi
+[[ -n "$game_path" && -d "$game_path/LOTF2/Binaries/Win64" ]] || { printf 'No saved installation was found.\n' >&2; exit 2; }
 win64=$(cd -- "$game_path/LOTF2/Binaries/Win64" && pwd)
 for mods in "$win64/ue4ss/Mods" "$win64/Mods"; do
     target="$mods/LotFArchipelago"
@@ -22,4 +26,5 @@ for mods in "$win64/ue4ss/Mods" "$win64/Mods"; do
         mv -- "$temporary" "$mods_text"
     fi
 done
+rm -f -- "$data_root/game-path.txt"
 printf 'Removed LotF Archipelago; UE4SS and other mods were left unchanged.\n'

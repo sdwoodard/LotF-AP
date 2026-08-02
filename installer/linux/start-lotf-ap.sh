@@ -15,7 +15,11 @@ while (($#)); do
     esac
     shift
 done
-[[ -n "$game_path" ]] || { printf -- '--game-path is required.\n' >&2; exit 2; }
+data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
+if [[ -z "$game_path" && -f "$data_root/game-path.txt" ]]; then
+    IFS= read -r game_path < "$data_root/game-path.txt"
+fi
+[[ -n "$game_path" ]] || { printf 'No saved installation was found; run the installer first.\n' >&2; exit 2; }
 game_path=$(cd -- "$game_path" && pwd)
 exe="$game_path/LOTF2/Binaries/Win64/LOTF2-Win64-Shipping.exe"
 [[ -f "$exe" ]] || { printf 'Shipping executable was not found.\n' >&2; exit 1; }
@@ -33,11 +37,10 @@ if [[ -z "$proton" ]]; then
 fi
 [[ -n "$proton" && -x "$proton" ]] || { printf 'Proton was not found; pass --proton /path/to/proton.\n' >&2; exit 1; }
 
-data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
 mkdir -p -- "$data_root"
 data_root=$(cd -- "$data_root" && pwd)
 windows_data_root="Z:${data_root//\//\\}"
-command=(env "SteamAppId=1501750" "SteamGameId=1501750" "STEAM_COMPAT_DATA_PATH=$compat_data" "STEAM_COMPAT_CLIENT_INSTALL_PATH=$steam_root" "LOTF_AP_GAME_DATA_DIR=$windows_data_root" "$proton" run "$exe" -NoEAC)
-printf 'Starting the shipping executable directly for offline mod play.\n'
+command=(env "SteamAppId=1501750" "SteamGameId=1501750" "EOS_DISABLE_OVERLAY=1" "STEAM_COMPAT_DATA_PATH=$compat_data" "STEAM_COMPAT_CLIENT_INSTALL_PATH=$steam_root" "LOTF_AP_GAME_DATA_DIR=$windows_data_root" "$proton" run "$exe" -NoEAC -Offline -NoRedpointEOS -NoOnlineSubsystemRedpointEOS)
+printf 'Starting the shipping executable with anti-cheat and Redpoint EOS disabled.\n'
 if ((dry_run)); then printf '%q ' "${command[@]}"; printf '\n'; exit 0; fi
 exec "${command[@]}"

@@ -46,7 +46,7 @@ pickup and delivering its `LocationChecks` packet.
 Received-item recovery uses a stronger save checkpoint:
 
 1. The client fingerprints the active primary `SaveNN.sav` with SHA-256.
-2. At each game save, protocol v4 records the receive cursor and measured count
+2. At each game save, protocol v5 records the receive cursor and measured count
    of every mapped item beside that fingerprint using an atomic JSON update.
 3. On load, the client adds only receipts after that checkpoint cursor to its
    recorded baseline and compares the result with the inventory now loaded.

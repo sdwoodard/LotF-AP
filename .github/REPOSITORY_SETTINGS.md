@@ -26,11 +26,12 @@ project.
 ## Social preview
 
 Open **Settings > General > Social preview > Edit**, then upload
-`.github/assets/lotf-icon.png`.
+`.github/assets/social-preview.jpg`.
 
-This is the same transparent game icon used by Archipelago Launcher. GitHub
-may place it on a background or crop it when producing a wide sharing card, so
-inspect the preview before saving.
+The file is 1280x640 with a solid background and is below GitHub's 1 MB upload
+limit. After saving, shared-link services may retain the failed prior preview
+in cache; use their refresh/debug tool or wait for the cache to expire before
+judging the replacement.
 
 ## Community features
 
@@ -46,9 +47,9 @@ Pin the first stable release and add a short announcement discussion containing
 the supported Steam build, offline/EAC warning, installation link, and known
 limitations.
 
-## First release
+## Releases
 
-Pushing tag `v0.1.0` runs `.github/workflows/release.yml`. Under
+Pushing a tag such as `v0.2.1` runs `.github/workflows/release.yml`. Under
 **Settings > Actions > General > Workflow permissions**, confirm that the
 workflow may write repository contents, or confirm that organization policy
 accepts the workflow's explicit `contents: write` permission.

@@ -111,7 +111,7 @@ class LordsOfTheFallenWorld(World):
                 LOCATION_NAME_TO_ID[name] for name in ALL_BOSSES_GOAL_LOCATIONS
             ]
         return {
-            "world_version": "0.2.0",
+            "world_version": "0.2.1",
             "markers": marker_rows,
             "items": item_rows,
             "goal_locations": goal_locations,

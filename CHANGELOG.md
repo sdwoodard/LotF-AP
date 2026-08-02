@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.1 - 2026-08-02
+
+- Prepare loaded physical pickups by their persistent retail GUID before the
+  player interacts with them, and correlate the prepared inventory object with
+  its generated location. This fixes 0.2.0 runs that retained vanilla pickups
+  and never reported checks.
+- Observe interaction-component, pickup-completion, and inventory-added events,
+  with detailed preparation/check logging and the tutorial Throwing Stone
+  still explicitly preserved.
+- Fail closed on a client/mod protocol mismatch and avoid registering gameplay
+  hooks until a compatible client has completed bridge configuration.
+- Remove speculative reflected method calls on arbitrary hook values that could
+  crash UE4SS while a title-screen character object was being initialized.
+- Start the game with offline/Redpoint EOS suppression flags and append launch
+  decisions to the diagnostic log while retaining the full-game Steam AppID.
+  The bridge also disables the game's online-mode, crossplay, and invasion
+  settings directly.
+- Replace the Windows installation prompts with a single installer window,
+  progress display, and read-only output log. The selected game path is saved
+  for one-click start, uninstall, and diagnostic scripts.
+- Consolidate Windows distribution into
+  `LotF-Archipelago-0.2.1-win64.zip`; the separate bootstrap installer archive
+  is no longer produced.
+- Streamline player documentation and provide a correctly sized, separate
+  GitHub social-preview asset.
+
 ## 0.2.0 - 2026-08-01
 
 - Expanded the physical location pool from curated unique pickups to all 597

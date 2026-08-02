@@ -1,8 +1,11 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
+from unittest import SkipTest, TestCase
 
 from ..client.bridge import PROTOCOL_VERSION, GameBridge, decode, encode
+
+
+REPOSITORY_ROOT = Path(__file__).parents[3]
 
 
 class TestGameBridge(TestCase):
@@ -121,3 +124,36 @@ class TestGameBridge(TestCase):
             events = bridge.read_events()
             self.assertEqual(1, len(events))
             self.assertEqual("HELLO", events[0].verb)
+
+
+class TestLuaPickupContract(TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        bridge_path = REPOSITORY_ROOT / "game-mod" / "LotFArchipelago" / "Scripts" / "bridge.lua"
+        if not bridge_path.is_file():
+            raise SkipTest("Lua contract checks require the full LotF-AP repository")
+        cls.source = bridge_path.read_text(encoding="utf-8")
+
+    def test_loaded_pickups_are_prepared_by_guid(self) -> None:
+        self.assertIn('FindAllOf("Pickup")', self.source)
+        self.assertIn("Bridge.prepared_items[item_name]", self.source)
+        self.assertIn("pickup_identity(pickup)", self.source)
+        self.assertIn("B21D92B8406214F0AEAF6B9B239BB661", self.source)
+
+    def test_multiple_observable_pickup_paths_are_registered(self) -> None:
+        self.assertIn("Pickup:OnTakePickupEndDelegate", self.source)
+        self.assertIn("InteractionComponent:NotifyOnInteractionActivate", self.source)
+        self.assertIn("InteractionComponent:OnInteractionActivate", self.source)
+        self.assertIn("InventoryComponent:OnItemAdded", self.source)
+
+    def test_reflection_and_protocol_paths_fail_closed(self) -> None:
+        self.assertNotIn("value[method](value)", self.source)
+        mismatch = self.source.index('if protocol_version ~= Bridge.protocol_version then')
+        valid_reset = self.source.index("reset(session)", mismatch)
+        self.assertIn("reset(nil)", self.source[mismatch:valid_reset])
+
+    def test_game_online_mode_is_forced_off(self) -> None:
+        self.assertIn('FindFirstOf("HexGameUserSettings")', self.source)
+        self.assertIn("SetOnlineModeEnabled(false)", self.source)
+        self.assertIn("SetCrossplayEnabled(false)", self.source)
+        self.assertIn("SetAllowInvasionsEnabled(false)", self.source)

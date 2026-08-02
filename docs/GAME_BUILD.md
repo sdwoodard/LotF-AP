@@ -1,6 +1,6 @@
 # Supported game build
 
-Version 0.2.0 was audited against the installed Steam release on 2026-08-01:
+Version 0.2.1 was audited against the installed Steam release on 2026-08-02:
 
 - Steam App ID: `1501750`
 - Steam build ID: `24429019`

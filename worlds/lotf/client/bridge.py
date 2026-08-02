@@ -7,7 +7,7 @@ from urllib.parse import quote, unquote
 
 from .diagnostics import default_data_root
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 MAX_RECORD_BYTES = 64 * 1024
 ROTATE_EVENTS_AT = 16 * 1024 * 1024
 

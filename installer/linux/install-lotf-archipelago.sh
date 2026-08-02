@@ -57,4 +57,7 @@ else
     printf 'LotFArchipelago : 1\n' > "$mods_text"
 fi
 printf 'Installed LotF Archipelago into %s\n' "$target"
-printf 'Use this mod offline only; do not use matchmaking, co-op, invasions, or Easy Anti-Cheat.\n'
+data_root=${LOTF_AP_DATA_DIR:-"${XDG_STATE_HOME:-$HOME/.local/state}/LotFArchipelago"}
+mkdir -p -- "$data_root"
+printf '%s\n' "$(cd -- "$game_path" && pwd)" > "$data_root/game-path.txt"
+printf 'Saved the game location for the launcher and uninstaller.\n'

@@ -3,6 +3,6 @@
   "version": 7,
   "game": "Lords of the Fallen",
   "minimum_ap_version": "0.6.7",
-  "world_version": "0.2.0",
+  "world_version": "0.2.1",
   "authors": ["LotF Archipelago contributors"]
 }

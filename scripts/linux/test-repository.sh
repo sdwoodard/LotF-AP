@@ -27,6 +27,7 @@ required=(
     worlds/lotf/world.py
     worlds/lotf/assets/lotf-icon.png
     worlds/lotf/client/client.py
+    .github/assets/social-preview.jpg
     game-mod/LotFArchipelago/Scripts/main.lua
     game-mod/LotFArchipelago/Assets/archipelago.png
     installer/linux/install-lotf-archipelago.sh
@@ -41,6 +42,16 @@ while IFS= read -r file; do bash -n "$file"; done < <(find "$root/scripts" "$roo
     "$root/game-mod/LotFArchipelago/Assets/archipelago.png" \
     "$root/worlds/lotf/assets/lotf-icon.png" \
     "$root/.github/assets/lotf-icon.png"
+"$python_cmd" "$root/scripts/common/Validate-SocialPreview.py" \
+    "$root/.github/assets/social-preview.jpg"
+if grep -Fqi 'Windows-Installer' "$root/scripts/windows/Build-Release.ps1"; then
+    printf 'The separate Windows installer archive must not be built.\n' >&2
+    exit 1
+fi
+for offline_setting in -NoEAC -Offline -NoRedpointEOS -NoOnlineSubsystemRedpointEOS; do
+    grep -Fq -- "$offline_setting" "$root/installer/windows/Start-LotF-AP.ps1"
+    grep -Fq -- "$offline_setting" "$root/installer/linux/start-lotf-ap.sh"
+done
 
 if [[ -n "$game_path" ]]; then
     executable="$game_path/LOTF2/Binaries/Win64/LOTF2-Win64-Shipping.exe"

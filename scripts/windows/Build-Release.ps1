@@ -47,17 +47,9 @@ Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination (Join-Path 
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $packageStage 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $root 'VERSION') -Destination (Join-Path $packageStage 'VERSION')
 Copy-Item -LiteralPath (Join-Path $root 'player-options\Lords of the Fallen.yaml') -Destination $packageStage
-$packageGithubAssets = Join-Path $packageStage '.github\assets'
-New-Item -ItemType Directory -Force -Path $packageGithubAssets | Out-Null
-Copy-Item -LiteralPath (Join-Path $root '.github\REPOSITORY_SETTINGS.md') -Destination (Join-Path $packageStage '.github\REPOSITORY_SETTINGS.md')
-Copy-Item -LiteralPath (Join-Path $root '.github\assets\lotf-icon.png') -Destination $packageGithubAssets
-Copy-Item -LiteralPath (Join-Path $root '.github\assets\README.md') -Destination $packageGithubAssets
 $packageDocs = Join-Path $packageStage 'docs'
 New-Item -ItemType Directory -Force -Path $packageDocs | Out-Null
 Copy-Item -Path (Join-Path $root 'docs\*') -Destination $packageDocs -Recurse
-$worldDocs = Join-Path $packageStage 'worlds\lotf\docs'
-New-Item -ItemType Directory -Force -Path $worldDocs | Out-Null
-Copy-Item -Path (Join-Path $root 'worlds\lotf\docs\*') -Destination $worldDocs -Recurse
 $payload = Join-Path $packageStage 'game-mod\LotFArchipelago'
 New-Item -ItemType Directory -Force -Path $payload | Out-Null
 Copy-Item -Path (Join-Path $root 'game-mod\LotFArchipelago\*') -Destination $payload -Recurse
@@ -75,10 +67,4 @@ Compress-Archive -LiteralPath $packageStage -DestinationPath $packageZip -Compre
 $linuxPackageZip = Join-Path $dist "LotF-Archipelago-$version-linux.zip"
 Compress-Archive -LiteralPath $linuxPackageStage -DestinationPath $linuxPackageZip -CompressionLevel Optimal
 
-$bootstrapStage = Join-Path $build 'windows-installer'
-New-Item -ItemType Directory -Force -Path $bootstrapStage | Out-Null
-Copy-Item -LiteralPath (Join-Path $root 'installer\windows\Install-LotFArchipelago.cmd') -Destination $bootstrapStage
-Copy-Item -LiteralPath (Join-Path $root 'installer\windows\Install-LotFArchipelago.ps1') -Destination $bootstrapStage
-$bootstrapZip = Join-Path $dist "LotF-Archipelago-Windows-Installer-$version.zip"
-Compress-Archive -Path (Join-Path $bootstrapStage '*') -DestinationPath $bootstrapZip -CompressionLevel Optimal
 Write-Host "Built release artifacts in $dist"
